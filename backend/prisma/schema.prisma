@@ -1,0 +1,62 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  passwordHash String?     @map("password_hash")
+  name         String?
+  googleId     String?     @unique @map("google_id")
+  preferences  Json        @default("{}")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  savedJobs    SavedJob[]
+
+  @@map("users")
+}
+
+model Job {
+  id              String      @id @default(uuid())
+  title           String
+  company         String
+  location        String?
+  jobType         String?     @map("job_type") // internship, full-time
+  experienceLevel String?     @map("experience_level") // fresher, 1-3, 3-5, 5+
+  degreeRequired  String?     @map("degree_required") // BTech, BALLB, LLB, Any
+  description     String?
+  applyUrl        String      @map("apply_url")
+  source          String      // greenhouse, lever, workday, ashby, smartrecruiters
+  sourceId        String?     @map("source_id")
+  postedDate      DateTime?   @map("posted_date")
+  lastVerified    DateTime    @default(now()) @map("last_verified")
+  isActive        Boolean     @default(true) @map("is_active")
+  contentHash     String      @unique @map("content_hash")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  savedBy         SavedJob[]
+
+  @@index([isActive])
+  @@index([company])
+  @@index([jobType])
+  @@index([experienceLevel])
+  @@map("jobs")
+}
+
+model SavedJob {
+  userId    String   @map("user_id")
+  jobId     String   @map("job_id")
+  savedAt   DateTime @default(now()) @map("saved_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@id([userId, jobId])
+  @@map("saved_jobs")
+}
