@@ -37,11 +37,13 @@ model Job {
   source          String      // greenhouse, lever, workday, ashby, smartrecruiters
   sourceId        String?     @map("source_id")
   postedDate      DateTime?   @map("posted_date")
-  lastVerified    DateTime    @default(now()) @map("last_verified")
-  isActive        Boolean     @default(true) @map("is_active")
-  contentHash     String      @unique @map("content_hash")
-  createdAt       DateTime    @default(now()) @map("created_at")
-  savedBy         SavedJob[]
+  lastVerified           DateTime @default(now()) @map("last_verified")
+  isActive               Boolean  @default(true) @map("is_active")
+  verificationAttempts   Int      @default(0) @map("verification_attempts")
+  lastVerificationError  String?  @map("last_verification_error")
+  contentHash            String   @unique @map("content_hash")
+  createdAt              DateTime @default(now()) @map("created_at")
+  savedBy                SavedJob[]
 
   @@index([isActive])
   @@index([company])

@@ -88,6 +88,8 @@ export class JobsService {
                 ...data,
                 lastVerified: new Date(),
                 isActive: true,
+                verificationAttempts: 0,
+                lastVerificationError: null,
             },
             create: data,
         });
@@ -111,10 +113,16 @@ export class JobsService {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
+        // Mark jobs as inactive if:
+        // 1. Not verified within X days, OR
+        // 2. Have 3+ consecutive verification failures
         return this.prisma.job.updateMany({
             where: {
-                lastVerified: { lt: cutoffDate },
                 isActive: true,
+                OR: [
+                    { lastVerified: { lt: cutoffDate } },
+                    { verificationAttempts: { gte: 3 } },
+                ],
             },
             data: { isActive: false },
         });
