@@ -1,57 +1,59 @@
 "use client";
 
-import { useEffect, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase.config";
+import { authApi } from "@/lib/api";
 import { useAuth } from "@/app/providers";
-import { usersApi } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
-function CallbackContent() {
+export default function AuthCallbackPage() {
     const router = useRouter();
-    const searchParams = useSearchParams();
     const { login } = useAuth();
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const token = searchParams.get("token");
+        const handleCallback = async () => {
+            try {
+                // Get the session that Supabase set after the OAuth redirect
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-        if (token) {
-            // Fetch user info and complete login
-            const completeAuth = async () => {
-                try {
-                    // Store token temporarily to fetch user data
-                    document.cookie = `token=${token}; path=/; max-age=${7 * 24 * 60 * 60}`;
-                    const user = await usersApi.getProfile();
-                    login(token, user);
-                    router.push("/");
-                } catch (error) {
-                    console.error("Failed to complete authentication:", error);
-                    router.push("/auth/login?error=callback_failed");
+                if (sessionError || !session) {
+                    throw new Error(sessionError?.message || "No session found after OAuth redirect");
                 }
-            };
-            completeAuth();
-        } else {
-            router.push("/auth/login?error=no_token");
-        }
-    }, [searchParams, router, login]);
+
+                // Exchange Supabase access token for our app JWT
+                const response = await authApi.supabaseLogin(session.access_token);
+                login(response.accessToken, response.user);
+                router.push("/");
+            } catch (err: any) {
+                console.error("OAuth callback error:", err);
+                setError(err.message || "Authentication failed");
+                setTimeout(() => router.push("/auth/login"), 3000);
+            }
+        };
+
+        handleCallback();
+    }, []);
+
+    if (error) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="text-center space-y-2">
+                    <p className="text-red-500 font-medium">Authentication failed</p>
+                    <p className="text-muted-foreground text-sm">{error}</p>
+                    <p className="text-muted-foreground text-sm">Redirecting to login...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center">
-            <div className="text-center">
+        <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
-                <p className="mt-4 text-muted-foreground">Completing sign in...</p>
+                <p className="text-muted-foreground">Completing sign in...</p>
             </div>
         </div>
-    );
-}
-
-export default function CallbackPage() {
-    return (
-        <Suspense fallback={
-            <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            </div>
-        }>
-            <CallbackContent />
-        </Suspense>
     );
 }

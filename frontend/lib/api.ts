@@ -29,6 +29,10 @@ export const authApi = {
         const response = await api.post("/auth/login", data);
         return response.data;
     },
+    supabaseLogin: async (accessToken: string) => {
+        const response = await api.post("/auth/supabase", { accessToken });
+        return response.data;
+    },
 };
 
 // Jobs API

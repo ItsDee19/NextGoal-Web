@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Query, UseGuards, Optional } from '@nestjs/common';
+import { Controller, Get, Param, Query, Post, UseGuards, Optional } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JobsService } from './jobs.service';
+import { JobVerificationService } from './job-verification.service';
 import { JobFiltersDto } from './dto/job-filters.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -11,6 +12,7 @@ import { UsersService } from '../users/users.service';
 export class JobsController {
     constructor(
         private jobsService: JobsService,
+        private jobVerificationService: JobVerificationService,
     ) { }
 
     @Get()
@@ -37,6 +39,12 @@ export class JobsController {
     @ApiOperation({ summary: 'Get available filter options' })
     async getFilterOptions() {
         return this.jobsService.getFilterOptions();
+    }
+
+    @Post('verify-all')
+    @ApiOperation({ summary: 'Manually trigger job verification (admin only)' })
+    async verifyAllJobs() {
+        return this.jobVerificationService.verifyAllActiveJobs();
     }
 
     @Get(':id')

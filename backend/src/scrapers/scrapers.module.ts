@@ -8,6 +8,7 @@ import { WorkdayScraper } from './providers/workday.scraper';
 import { AshbyScraper } from './providers/ashby.scraper';
 import { SmartRecruitersScraper } from './providers/smartrecruiters.scraper';
 import { ScraperProcessor } from './scraper.processor';
+import { ScraperScheduler } from './scraper.scheduler';
 import { JobsModule } from '../jobs/jobs.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { JobsModule } from '../jobs/jobs.module';
     providers: [
         ScrapersService,
         ScraperProcessor,
+        ScraperScheduler,
         GreenhouseScraper,
         LeverScraper,
         WorkdayScraper,

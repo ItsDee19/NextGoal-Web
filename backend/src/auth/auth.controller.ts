@@ -1,7 +1,5 @@
-import { Controller, Post, Body, Get, UseGuards, Req, Res } from '@nestjs/common';
+import { Controller, Post, Body } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
-import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -25,22 +23,11 @@ export class AuthController {
         return this.authService.login(loginDto);
     }
 
-    @Get('google')
-    @UseGuards(AuthGuard('google'))
-    @ApiOperation({ summary: 'Initiate Google OAuth login' })
-    async googleAuth() {
-        // Initiates Google OAuth flow
-    }
-
-    @Get('google/callback')
-    @UseGuards(AuthGuard('google'))
-    @ApiOperation({ summary: 'Google OAuth callback' })
-    async googleAuthCallback(@Req() req: any, @Res() res: Response) {
-        const tokenResponse = this.authService.generateTokenResponse(req.user);
-        // Redirect to frontend with token
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        res.redirect(
-            `${frontendUrl}/auth/callback?token=${tokenResponse.accessToken}`,
-        );
+    @Post('supabase')
+    @ApiOperation({ summary: 'Login with Supabase OAuth access token' })
+    @ApiBody({ schema: { properties: { accessToken: { type: 'string' } } } })
+    async supabaseAuth(@Body('accessToken') accessToken: string) {
+        const user = await this.authService.validateSupabaseUser(accessToken);
+        return this.authService.generateTokenResponse(user);
     }
 }
