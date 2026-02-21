@@ -1,0 +1,24 @@
+---
+exclude_paths:
+  - 'frontend/.next/**'
+  - 'backend/dist/**'
+  - '**/node_modules/**'
+  - '**/*.woff2'
+  - '**/*.woff'
+  - '**/*.ttf'
+  - '**/*.eot'
+  - '**/*.pack'
+  - '**/*.pack.gz'
+  - '**/*.pack.old'
+  - '**/*.tsbuildinfo'
+  - 'results.sarif'
+
+engines:
+  pmd:
+    enabled: false
+  pmd-legacy:
+    enabled: false
+  tsqllint:
+    enabled: false
+  jshint:
+    enabled: false
