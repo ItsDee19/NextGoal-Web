@@ -141,8 +141,14 @@ export class JobVerificationService {
      * Verify all active jobs in batches
      */
     async verifyAllActiveJobs(): Promise<{ verified: number; markedInactive: number; errors: number }> {
+        // Only verify jobs not checked in the last 20 hours (incremental nightly run)
+        const twentyHoursAgo = new Date(Date.now() - 20 * 60 * 60 * 1000);
+
         const activeJobs = await this.prisma.job.findMany({
-            where: { isActive: true },
+            where: {
+                isActive: true,
+                lastVerified: { lt: twentyHoursAgo },
+            },
             select: { id: true },
         });
 

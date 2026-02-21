@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { GreenhouseScraper } from './providers/greenhouse.scraper';
@@ -12,6 +12,8 @@ import * as crypto from 'crypto';
 
 @Injectable()
 export class ScrapersService {
+    private readonly logger = new Logger(ScrapersService.name);
+
     constructor(
         @InjectQueue('scraper') private scraperQueue: Queue,
         private jobsService: JobsService,
@@ -58,6 +60,10 @@ export class ScrapersService {
         for (const job of jobs) {
             try {
                 const contentHash = this.generateContentHash(job);
+
+                // Check if this job already exists so we can count add vs update
+                const existing = await this.jobsService.findByHash(contentHash);
+
                 await this.jobsService.upsertByHash(contentHash, {
                     title: job.title,
                     company: job.company,
@@ -72,25 +78,37 @@ export class ScrapersService {
                     postedDate: job.postedDate,
                     contentHash,
                 });
-                results.added++;
+
+                if (existing) {
+                    results.updated++;
+                } else {
+                    results.added++;
+                }
             } catch (error) {
-                console.error(`Error processing job: ${job.title}`, error);
+                this.logger.error(`Error processing job: ${job.title}`, error);
                 results.errors++;
             }
         }
 
+        this.logger.log(
+            `processScrapedJobs: ${results.added} added, ${results.updated} updated, ${results.errors} errors`,
+        );
         return results;
     }
 
-    // Sample company data for scraping
+    // Companies to scrape — Workday excluded (requires Playwright browser automation)
     getSampleCompanies() {
         return [
             { source: 'greenhouse', companyId: 'stripe' },
             { source: 'greenhouse', companyId: 'airbnb' },
             { source: 'greenhouse', companyId: 'coinbase' },
+            { source: 'greenhouse', companyId: 'databricks' },
+            { source: 'greenhouse', companyId: 'discord' },
             { source: 'lever', companyId: 'netlify' },
             { source: 'lever', companyId: 'notion' },
+            { source: 'lever', companyId: 'vercel' },
             { source: 'ashby', companyId: 'ramp' },
+            { source: 'ashby', companyId: 'retool' },
             { source: 'smartrecruiters', companyId: 'visa' },
         ];
     }
@@ -99,6 +117,8 @@ export class ScrapersService {
         const companies = this.getSampleCompanies();
         const results = {
             total: 0,
+            added: 0,
+            updated: 0,
             successful: 0,
             failed: 0,
         };
@@ -106,17 +126,22 @@ export class ScrapersService {
         for (const company of companies) {
             try {
                 const jobs = await this.scrapeCompany(company.source, company.companyId);
-                await this.processScrapedJobs(jobs);
+                const processed = await this.processScrapedJobs(jobs);
                 results.successful++;
                 results.total += jobs.length;
+                results.added += processed.added;
+                results.updated += processed.updated;
             } catch (error) {
-                console.error(`Failed to scrape ${company.companyId}:`, error);
+                this.logger.error(`Failed to scrape ${company.companyId}:`, error);
                 results.failed++;
             }
         }
 
-        // Expire jobs that haven't been verified recently
-        await this.jobsService.expireStaleJobs(7);
+        // Expire jobs that haven't been verified recently (7 days)
+        const expired = await this.jobsService.expireStaleJobs(7);
+        this.logger.log(
+            `runFullScrape complete — scraped: ${results.total}, added: ${results.added}, updated: ${results.updated}, expired: ${(expired as any).count ?? 'unknown'}`,
+        );
 
         return results;
     }

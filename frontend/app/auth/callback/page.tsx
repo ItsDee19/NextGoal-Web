@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase.config";
 import { authApi } from "@/lib/api";
 import { useAuth } from "@/app/providers";
@@ -9,32 +9,64 @@ import { Loader2 } from "lucide-react";
 
 export default function AuthCallbackPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { login } = useAuth();
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const handleCallback = async () => {
+        let completed = false;
+
+        // Where to send the user after login (e.g. ?next=/profile)
+        const next = searchParams.get("next") || "/";
+
+        const handleSession = async (accessToken: string) => {
             try {
-                // Get the session that Supabase set after the OAuth redirect
-                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-                if (sessionError || !session) {
-                    throw new Error(sessionError?.message || "No session found after OAuth redirect");
-                }
-
-                // Exchange Supabase access token for our app JWT
-                const response = await authApi.supabaseLogin(session.access_token);
+                const response = await authApi.supabaseLogin(accessToken);
                 login(response.accessToken, response.user);
-                router.push("/");
+                // Use replace so the callback page is not in browser history
+                router.replace(next);
             } catch (err: any) {
                 console.error("OAuth callback error:", err);
                 setError(err.message || "Authentication failed");
-                setTimeout(() => router.push("/auth/login"), 3000);
+                setTimeout(() => router.replace("/auth/login"), 3000);
             }
         };
 
-        handleCallback();
-    }, []);
+        // Listen for SIGNED_IN — fires reliably after Supabase parses the
+        // access_token from the OAuth redirect hash fragment.
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (completed) return;
+            if (event === "SIGNED_IN" && session) {
+                completed = true;
+                subscription.unsubscribe();
+                handleSession(session.access_token);
+            }
+        });
+
+        // Parallel getSession() in case the SIGNED_IN event already fired
+        // before the listener was registered.
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (completed || !session) return;
+            completed = true;
+            subscription.unsubscribe();
+            handleSession(session.access_token);
+        });
+
+        // Timeout fallback — surface an error if nothing resolves in 10 s
+        const timeout = setTimeout(() => {
+            if (!completed) {
+                completed = true;
+                subscription.unsubscribe();
+                setError("No session found after OAuth redirect");
+                setTimeout(() => router.replace("/auth/login"), 3000);
+            }
+        }, 10000);
+
+        return () => {
+            subscription.unsubscribe();
+            clearTimeout(timeout);
+        };
+    }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (error) {
         return (
