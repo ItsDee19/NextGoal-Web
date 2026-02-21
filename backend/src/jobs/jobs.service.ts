@@ -81,6 +81,10 @@ export class JobsService {
         return this.prisma.job.create({ data });
     }
 
+    async findByHash(contentHash: string) {
+        return this.prisma.job.findUnique({ where: { contentHash }, select: { id: true } });
+    }
+
     async upsertByHash(contentHash: string, data: Prisma.JobCreateInput) {
         return this.prisma.job.upsert({
             where: { contentHash },

@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, createContext, useContext, useEffect } from "react";
 import Cookies from "js-cookie";
+import { supabase } from "@/lib/supabase.config";
 
 // Auth context
 interface User {
@@ -62,6 +63,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         Cookies.remove("user");
         setToken(null);
         setUser(null);
+        supabase.auth.signOut(); // clear Supabase OAuth session too
     };
 
     return (
