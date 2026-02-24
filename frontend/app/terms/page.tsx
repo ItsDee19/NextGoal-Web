@@ -9,13 +9,13 @@ export default function TermsPage() {
                 Back to jobs
             </Link>
 
-            <div className="bg-white dark:bg-slate-900 rounded-xl border p-8">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border p-4 sm:p-6 md:p-8">
                 <div className="flex items-center gap-3 mb-8">
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
                         <Scale className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold">Terms of Service & Disclaimer</h1>
+                        <h1 className="text-xl sm:text-2xl font-bold">Terms of Service & Disclaimer</h1>
                         <p className="text-muted-foreground">Last updated: February 2026</p>
                     </div>
                 </div>

@@ -42,6 +42,12 @@ model Job {
   verificationAttempts   Int      @default(0) @map("verification_attempts")
   lastVerificationError  String?  @map("last_verification_error")
   contentHash            String   @unique @map("content_hash")
+  salaryMin              Int?     @map("salary_min")
+  salaryMax              Int?     @map("salary_max")
+  salaryCurrency         String?  @map("salary_currency")
+  skills                 String[] @default([])
+  category               String?
+  aiClassified           Boolean  @default(false) @map("ai_classified")
   createdAt              DateTime @default(now()) @map("created_at")
   savedBy                SavedJob[]
 

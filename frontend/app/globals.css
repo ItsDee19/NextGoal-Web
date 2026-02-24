@@ -53,6 +53,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -60,23 +61,300 @@
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-muted;
+  @apply bg-transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/30 rounded-full;
+  @apply bg-blue-200 dark:bg-blue-900 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/50;
+  @apply bg-blue-400 dark:bg-blue-700;
 }
 
 /* Smooth transitions */
 .transition-smooth {
   @apply transition-all duration-200 ease-in-out;
+}
+
+/* === KEY FRAME ANIMATIONS === */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes revealClip {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+
+  to {
+    clip-path: inset(0 0% 0 0);
+    opacity: 1;
+  }
+}
+
+@keyframes drawUnderline {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes letterSpacingIn {
+  from {
+    opacity: 0;
+    letter-spacing: 0.3em;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    letter-spacing: normal;
+    transform: translateY(0);
+  }
+}
+
+/* Heading animation utility classes */
+.animate-reveal-clip {
+  animation: revealClip 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-letter-spacing-in {
+  animation: letterSpacingIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.heading-underline {
+  position: relative;
+  display: inline-block;
+}
+
+.heading-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #3b82f6, #6366f1, #a855f7);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: drawUnderline 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.8s forwards;
+}
+
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes glowPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+  }
+
+  50% {
+    box-shadow: 0 0 40px rgba(99, 102, 241, 0.35);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes floatDot {
+
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: translateY(-10px) scale(1.1);
+    opacity: 1;
+  }
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes borderGlow {
+
+  0%,
+  100% {
+    border-color: rgba(99, 102, 241, 0.3);
+  }
+
+  50% {
+    border-color: rgba(99, 102, 241, 0.7);
+  }
+}
+
+/* === UTILITY ANIMATION CLASSES === */
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 0.4s ease-out forwards;
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
+.animate-gradient-text {
+  background-size: 200% auto;
+  animation: gradientShift 4s linear infinite;
+}
+
+.animate-float-dot {
+  animation: floatDot 3s ease-in-out infinite;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.4s ease-out forwards;
+}
+
+/* Staggered animation delays for job cards */
+.job-card-stagger:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.job-card-stagger:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.job-card-stagger:nth-child(3) {
+  animation-delay: 120ms;
+}
+
+.job-card-stagger:nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.job-card-stagger:nth-child(5) {
+  animation-delay: 240ms;
+}
+
+.job-card-stagger:nth-child(6) {
+  animation-delay: 300ms;
+}
+
+.job-card-stagger:nth-child(7) {
+  animation-delay: 360ms;
+}
+
+.job-card-stagger:nth-child(8) {
+  animation-delay: 420ms;
+}
+
+.job-card-stagger:nth-child(n+9) {
+  animation-delay: 480ms;
+}
+
+/* Glassmorphism card effect */
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.dark .glass-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+/* Futuristic grid background */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Glow on hover for job cards */
+.job-card-glow:hover {
+  box-shadow:
+    0 0 0 1px rgba(99, 102, 241, 0.3),
+    0 4px 20px rgba(99, 102, 241, 0.15),
+    0 8px 40px rgba(99, 102, 241, 0.08);
+}
+
+/* Shimmer loading effect */
+.shimmer {
+  background: linear-gradient(90deg,
+      rgba(226, 232, 240, 0.8) 0%,
+      rgba(248, 250, 252, 1) 50%,
+      rgba(226, 232, 240, 0.8) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.dark .shimmer {
+  background: linear-gradient(90deg,
+      rgba(30, 41, 59, 0.8) 0%,
+      rgba(51, 65, 85, 1) 50%,
+      rgba(30, 41, 59, 0.8) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }
