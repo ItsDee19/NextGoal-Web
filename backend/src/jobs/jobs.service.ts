@@ -187,4 +187,49 @@ export class JobsService {
             jobTypes: ['internship', 'full-time'],
         };
     }
+
+    async updateAiFields(
+        jobId: string,
+        classification: {
+            jobType: string;
+            experienceLevel: string;
+            degreeRequired: string;
+            salaryMin?: number;
+            salaryMax?: number;
+            salaryCurrency?: string;
+            skills: string[];
+            category: string;
+        },
+    ) {
+        return this.prisma.job.update({
+            where: { id: jobId },
+            data: {
+                jobType: classification.jobType,
+                experienceLevel: classification.experienceLevel,
+                degreeRequired: classification.degreeRequired,
+                salaryMin: classification.salaryMin ?? null,
+                salaryMax: classification.salaryMax ?? null,
+                salaryCurrency: classification.salaryCurrency ?? null,
+                skills: classification.skills,
+                category: classification.category,
+                aiClassified: true,
+            },
+        });
+    }
+
+    async findUnclassifiedJobs() {
+        return this.prisma.job.findMany({
+            where: {
+                isActive: true,
+                aiClassified: false,
+            },
+            select: {
+                id: true,
+                title: true,
+                company: true,
+                location: true,
+                description: true,
+            },
+        });
+    }
 }

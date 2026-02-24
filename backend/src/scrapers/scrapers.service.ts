@@ -6,6 +6,7 @@ import { LeverScraper } from './providers/lever.scraper';
 import { WorkdayScraper } from './providers/workday.scraper';
 import { AshbyScraper } from './providers/ashby.scraper';
 import { SmartRecruitersScraper } from './providers/smartrecruiters.scraper';
+import { AiClassifierService } from './ai/ai-classifier.service';
 import { JobsService } from '../jobs/jobs.service';
 import { ScrapedJob } from './interfaces/scraped-job.interface';
 import * as crypto from 'crypto';
@@ -17,6 +18,7 @@ export class ScrapersService {
     constructor(
         @InjectQueue('scraper') private scraperQueue: Queue,
         private jobsService: JobsService,
+        private aiClassifier: AiClassifierService,
         private greenhouseScraper: GreenhouseScraper,
         private leverScraper: LeverScraper,
         private workdayScraper: WorkdayScraper,
@@ -54,6 +56,7 @@ export class ScrapersService {
         const results = {
             added: 0,
             updated: 0,
+            aiClassified: 0,
             errors: 0,
         };
 
@@ -64,20 +67,36 @@ export class ScrapersService {
                 // Check if this job already exists so we can count add vs update
                 const existing = await this.jobsService.findByHash(contentHash);
 
-                await this.jobsService.upsertByHash(contentHash, {
+                // Attempt AI classification — falls back to scraped values on failure
+                const aiResult = await this.aiClassifier.classify(job);
+
+                const jobData: any = {
                     title: job.title,
                     company: job.company,
                     location: job.location,
-                    jobType: job.jobType,
-                    experienceLevel: job.experienceLevel,
-                    degreeRequired: job.degreeRequired,
+                    jobType: aiResult?.jobType || job.jobType,
+                    experienceLevel: aiResult?.experienceLevel || job.experienceLevel,
+                    degreeRequired: aiResult?.degreeRequired || job.degreeRequired,
                     description: job.description,
                     applyUrl: job.applyUrl,
                     source: job.source,
                     sourceId: job.sourceId,
                     postedDate: job.postedDate,
                     contentHash,
-                });
+                };
+
+                // Add AI-enriched fields if classification succeeded
+                if (aiResult) {
+                    jobData.salaryMin = aiResult.salaryMin ?? null;
+                    jobData.salaryMax = aiResult.salaryMax ?? null;
+                    jobData.salaryCurrency = aiResult.salaryCurrency ?? null;
+                    jobData.skills = aiResult.skills;
+                    jobData.category = aiResult.category;
+                    jobData.aiClassified = true;
+                    results.aiClassified++;
+                }
+
+                await this.jobsService.upsertByHash(contentHash, jobData);
 
                 if (existing) {
                     results.updated++;
@@ -91,7 +110,7 @@ export class ScrapersService {
         }
 
         this.logger.log(
-            `processScrapedJobs: ${results.added} added, ${results.updated} updated, ${results.errors} errors`,
+            `processScrapedJobs: ${results.added} added, ${results.updated} updated, ${results.aiClassified} AI-classified, ${results.errors} errors`,
         );
         return results;
     }

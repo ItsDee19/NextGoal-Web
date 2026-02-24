@@ -126,7 +126,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Preferences */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl border p-6">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border p-4 sm:p-6">
                 <div className="flex items-center gap-2 mb-6">
                     <Settings className="h-5 w-5" />
                     <h2 className="text-lg font-semibold">Job Preferences</h2>
@@ -136,7 +136,7 @@ export default function ProfilePage() {
                     {/* Experience Level */}
                     <div>
                         <h3 className="text-sm font-medium mb-3">Preferred Experience Level</h3>
-                        <div className="flex flex-wrap gap-4">
+                        <div className="flex flex-wrap gap-3 sm:gap-4">
                             {experienceLevels.map((level) => (
                                 <div key={level.value} className="flex items-center gap-2">
                                     <Checkbox
