@@ -1,11 +1,11 @@
 "use client";
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { usersApi } from "@/lib/api";
 import { useAuth } from "@/app/providers";
 import { JobCard } from "@/components/job-card";
-import { Button } from "@/components/ui/button";
-import { Bookmark, Loader2, ArrowLeft } from "lucide-react";
+import { ResultState } from "@/components/result-state";
+import { ButtonLink } from "@/components/ui/button";
+import { Bookmark, ArrowLeft, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -13,90 +13,19 @@ import { useEffect } from "react";
 export default function SavedJobsPage() {
     const { user, isLoading: authLoading } = useAuth();
     const router = useRouter();
-    const queryClient = useQueryClient();
-
-    useEffect(() => {
-        if (!authLoading && !user) {
-            router.push("/auth/login");
-        }
-    }, [user, authLoading, router]);
-
-    const { data: savedJobs, isLoading } = useQuery({
-        queryKey: ["saved-jobs"],
-        queryFn: () => usersApi.getSavedJobs(),
-        enabled: !!user,
-    });
-
-    const refetch = () => {
-        queryClient.invalidateQueries({ queryKey: ["saved-jobs"] });
-    };
-
-    if (authLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[50vh]">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            </div>
-        );
-    }
-
-    if (!user) {
-        return null;
-    }
-
-    return (
-        <div className="max-w-4xl mx-auto">
-            {/* Header */}
-            <div className="mb-8">
-                <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
-                    <ArrowLeft className="h-4 w-4 mr-1" />
-                    Back to jobs
-                </Link>
-                <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
-                        <Bookmark className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold">Saved Jobs</h1>
-                        <p className="text-muted-foreground">
-                            {savedJobs?.length || 0} saved job{savedJobs?.length !== 1 ? "s" : ""}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Content */}
-            {isLoading ? (
-                <div className="grid gap-4">
-                    {[...Array(3)].map((_, i) => (
-                        <div key={i} className="bg-white dark:bg-slate-900 rounded-xl border p-6 animate-pulse">
-                            <div className="h-6 bg-slate-200 dark:bg-slate-800 rounded w-3/4 mb-4" />
-                            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
-                        </div>
-                    ))}
-                </div>
-            ) : savedJobs?.length === 0 ? (
-                <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-xl border">
-                    <Bookmark className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No saved jobs yet</h3>
-                    <p className="text-muted-foreground mb-6">
-                        Save jobs you're interested in to review them later
-                    </p>
-                    <Link href="/">
-                        <Button>Browse Jobs</Button>
-                    </Link>
-                </div>
-            ) : (
-                <div className="grid gap-4">
-                    {savedJobs?.map((job) => (
-                        <JobCard
-                            key={job.id}
-                            job={job}
-                            isSaved={true}
-                            onSaveToggle={refetch}
-                        />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+    useEffect(() => { if (!authLoading && !user) router.replace("/auth/login?next=%2Fsaved"); }, [user, authLoading, router]);
+    const jobs = useQuery({ queryKey: ["saved-jobs", user?.id], queryFn: ({ signal }) => usersApi.getSavedJobs(signal), enabled: !!user, retry: 1 });
+    if (authLoading || !user) return <div className="account-shell max-w-3xl mx-auto py-10"><ResultState kind="loading" title="Loading your shortlist" /></div>;
+    return <div className="account-shell max-w-3xl mx-auto py-10">
+        <Link href="/" className="mb-6 inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-primary"><ArrowLeft size={15} aria-hidden="true" />Back to jobs</Link>
+        <header className="collection-header mb-8 flex flex-wrap items-center gap-4">
+            <div className="account-mark flex h-12 w-12 items-center justify-center"><Bookmark size={22} aria-hidden="true" /></div>
+            <div className="min-w-0 flex-1"><p className="eyebrow mb-2 text-primary">Saved for later</p><h1 className="premium-heading">Your shortlist</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">The roles you want to come back to. Take the next step when you’re ready.</p></div>
+            {jobs.data && <span className="collection-count" role="status">{jobs.data.length.toLocaleString("en-IN")} {jobs.data.length === 1 ? "opportunity" : "opportunities"}</span>}
+        </header>
+        {jobs.isPending ? <ResultState kind="loading" title="Loading saved jobs" /> :
+        jobs.isError ? <ResultState kind="error" title="Your shortlist couldn’t be loaded" description="Try again to see your saved jobs." action="Try again" onAction={() => jobs.refetch()} /> :
+        !jobs.data?.length ? <div className="result-state"><div className="state-icon flex h-14 w-14 items-center justify-center"><Bookmark size={25} aria-hidden="true" /></div><h2 className="state-title display-font">Make room for your next move</h2><p className="state-description max-w-sm">Save a job while you browse and it will be here when you need it.</p><ButtonLink href="/" className="h-11 gap-2">Find jobs<ArrowUpRight size={16} aria-hidden="true" /></ButtonLink></div> :
+        <div className="grid gap-4">{jobs.data.map((job) => <JobCard key={job.id} job={job} isSaved />)}</div>}
+    </div>;
 }

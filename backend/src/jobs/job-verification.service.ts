@@ -2,204 +2,147 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { Agent as HttpAgent } from 'node:http';
+import { Agent as HttpsAgent } from 'node:https';
+import { normalizeApplicationUrl, publicDnsLookup } from '../common/application-url';
+
+export interface LinkVerification {
+    status: 'valid' | 'closed' | 'unknown' | 'unsafe';
+    isValid: boolean;
+    error?: string;
+}
+
+type JobVerificationOutcome = 'verified' | 'markedInactive' | 'closurePending' | 'inconclusive' | 'skipped';
 
 @Injectable()
 export class JobVerificationService {
     private readonly logger = new Logger(JobVerificationService.name);
+    private readonly httpAgent = new HttpAgent({ lookup: publicDnsLookup });
+    private readonly httpsAgent = new HttpsAgent({ lookup: publicDnsLookup });
+    private activeRun?: Promise<{ verified: number; markedInactive: number; errors: number; inconclusive: number }>;
 
     constructor(private prisma: PrismaService) { }
 
-    /**
-     * Verify if a job URL is still valid (returns 200 status)
-     */
-    async verifyJobUrl(url: string): Promise<{ isValid: boolean; error?: string }> {
+    /** Reachability is evidence, never a guarantee that an employer will accept an application. */
+    async verifyJobUrl(url: string): Promise<LinkVerification> {
+        let currentUrl = normalizeApplicationUrl(url);
+        if (!currentUrl) return { status: 'unsafe', isValid: false, error: 'Invalid or unsafe application URL' };
         try {
-            const response = await axios.get(url, {
-                timeout: 10000,
-                maxRedirects: 5,
-                validateStatus: (status) => status < 500, // Accept any status < 500
-                headers: {
-                    'User-Agent': 'NextGoal Job Aggregator (contact@example.com)',
-                },
-            });
-
-            // Check if page indicates job is closed
-            if (response.status === 200) {
-                const isClosed = this.checkJobClosed(response.data);
-                if (isClosed) {
-                    return { isValid: false, error: 'Job marked as closed on page' };
+            for (let redirects = 0; redirects <= 5; redirects++) {
+                const response = await axios.get(currentUrl, {
+                    timeout: 10000,
+                    maxRedirects: 0,
+                    maxContentLength: 2 * 1024 * 1024,
+                    responseType: 'text',
+                    validateStatus: () => true,
+                    httpAgent: this.httpAgent,
+                    httpsAgent: this.httpsAgent,
+                    proxy: false,
+                    headers: { 'User-Agent': 'NextGoal Job Aggregator' },
+                });
+                if ([301, 302, 303, 307, 308].includes(response.status)) {
+                    const location = response.headers?.location;
+                    if (!location) return { status: 'unknown', isValid: false, error: 'Redirect without destination' };
+                    let destination: string | null;
+                    try { destination = normalizeApplicationUrl(new URL(location, currentUrl).href); }
+                    catch { destination = null; }
+                    if (!destination) return { status: 'unsafe', isValid: false, error: 'Unsafe application redirect' };
+                    currentUrl = destination;
+                    continue;
                 }
-                return { isValid: true };
+                if (response.status === 404 || response.status === 410) {
+                    return { status: 'closed', isValid: false, error: `HTTP ${response.status}: posting unavailable` };
+                }
+                if (response.status === 200) {
+                    if (this.checkJobClosed(response.data)) {
+                        return { status: 'closed', isValid: false, error: 'Job page explicitly reports this posting closed' };
+                    }
+                    return { status: 'valid', isValid: true };
+                }
+                // Anti-bot, authorization, throttling and server failures do not prove closure.
+                return { status: 'unknown', isValid: false, error: `HTTP ${response.status}: unable to confirm availability` };
             }
-
-            if (response.status === 404) {
-                return { isValid: false, error: '404 Not Found' };
-            }
-
-            if (response.status === 410) {
-                return { isValid: false, error: '410 Gone (Job Removed)' };
-            }
-
-            return { isValid: false, error: `HTTP ${response.status}` };
+            return { status: 'unknown', isValid: false, error: 'Too many redirects' };
         } catch (error: any) {
-            if (error.code === 'ENOTFOUND') {
-                return { isValid: false, error: 'Domain not found' };
+            if (error.code === 'UNSAFE_APPLICATION_ADDRESS' || error.cause?.code === 'UNSAFE_APPLICATION_ADDRESS') {
+                return { status: 'unsafe', isValid: false, error: 'Application URL resolves to a non-public address' };
             }
-            if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
-                return { isValid: false, error: 'Request timeout' };
-            }
-            return { isValid: false, error: error.message || 'Unknown error' };
+            return { status: 'unknown', isValid: false, error: error.message || 'Availability check failed' };
         }
     }
 
-    /**
-     * Check if job page HTML contains "closed" indicators
-     */
-    private checkJobClosed(html: string): boolean {
-        try {
-            const $ = cheerio.load(html);
-            const pageText = $.text().toLowerCase();
-
-            const closedPhrases = [
-                'position filled',
-                'no longer accepting applications',
-                'this job is closed',
-                'this position is no longer available',
-                'application closed',
-                'job closed',
-                'posting has closed',
-                'applications are closed',
-                'opportunity has closed',
-            ];
-
-            return closedPhrases.some((phrase) => pageText.includes(phrase));
-        } catch (error) {
-            this.logger.warn('Error parsing HTML for closed status', error);
-            return false;
-        }
-    }
-
-    /**
-     * Verify a single job by ID
-     */
-    async verifyJob(jobId: string): Promise<void> {
-        const job = await this.prisma.job.findUnique({
-            where: { id: jobId },
+    private checkJobClosed(html: unknown): boolean {
+        if (typeof html !== 'string') return false;
+        const $ = cheerio.load(html);
+        // Script templates and generic prose such as "until this position is filled" are not closure evidence.
+        $('script, style, template, noscript, nav, footer').remove();
+        return $('h1, h2, [role="alert"]').toArray().some((element) => {
+            const text = $(element).text().replace(/\s+/g, ' ').trim().toLowerCase();
+            if (text.length > 300) return false;
+            return /\b(this (job|position|posting|opportunity) (is |has )?(closed|no longer available|been filled)|no longer accepting applications|applications (are|have) closed|job not found)\b/.test(text);
         });
-
-        if (!job) {
-            this.logger.warn(`Job ${jobId} not found`);
-            return;
-        }
-
-        if (!job.isActive) {
-            this.logger.debug(`Skipping inactive job ${jobId}`);
-            return;
-        }
-
-        const verification = await this.verifyJobUrl(job.applyUrl);
-
-        if (verification.isValid) {
-            // Job is valid - reset verification attempts
-            await this.prisma.job.update({
-                where: { id: jobId },
-                data: {
-                    lastVerified: new Date(),
-                    verificationAttempts: 0,
-                    lastVerificationError: null,
-                },
-            });
-            this.logger.debug(`Job ${jobId} verified successfully`);
-        } else {
-            // Job verification failed - increment attempts
-            const newAttempts = job.verificationAttempts + 1;
-            const shouldMarkInactive = newAttempts >= 3;
-
-            await this.prisma.job.update({
-                where: { id: jobId },
-                data: {
-                    lastVerified: new Date(),
-                    verificationAttempts: newAttempts,
-                    lastVerificationError: verification.error,
-                    isActive: shouldMarkInactive ? false : job.isActive,
-                },
-            });
-
-            if (shouldMarkInactive) {
-                this.logger.log(
-                    `Job ${jobId} marked inactive after ${newAttempts} failed attempts. Last error: ${verification.error}`,
-                );
-            } else {
-                this.logger.debug(
-                    `Job ${jobId} verification failed (attempt ${newAttempts}/3): ${verification.error}`,
-                );
-            }
-        }
     }
 
-    /**
-     * Verify all active jobs in batches
-     */
-    async verifyAllActiveJobs(): Promise<{ verified: number; markedInactive: number; errors: number }> {
-        // Only verify jobs not checked in the last 20 hours (incremental nightly run)
-        const twentyHoursAgo = new Date(Date.now() - 20 * 60 * 60 * 1000);
-
-        const activeJobs = await this.prisma.job.findMany({
-            where: {
-                isActive: true,
-                lastVerified: { lt: twentyHoursAgo },
+    async verifyJob(jobId: string): Promise<JobVerificationOutcome> {
+        const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+        if (!job || !job.isActive) return 'skipped';
+        const verification = await this.verifyJobUrl(job.applyUrl);
+        if (verification.status === 'valid') {
+            await this.prisma.job.update({
+                where: { id: jobId },
+                data: { lastVerified: new Date(), verificationAttempts: 0, lastVerificationError: null },
+            });
+            return 'verified';
+        }
+        if (verification.status === 'unknown') {
+            await this.prisma.job.update({
+                where: { id: jobId },
+                data: { lastVerified: new Date(), lastVerificationError: verification.error },
+            });
+            return 'inconclusive';
+        }
+        const attempts = job.verificationAttempts + 1;
+        const markInactive = verification.status === 'unsafe' || attempts >= 3;
+        await this.prisma.job.update({
+            where: { id: jobId },
+            data: {
+                lastVerified: new Date(),
+                verificationAttempts: attempts,
+                lastVerificationError: verification.error,
+                isActive: markInactive ? false : job.isActive,
             },
+        });
+        return markInactive ? 'markedInactive' : 'closurePending';
+    }
+
+    verifyAllActiveJobs() {
+        if (this.activeRun) return this.activeRun;
+        this.activeRun = this.runVerification().finally(() => { this.activeRun = undefined; });
+        return this.activeRun;
+    }
+
+    private async runVerification() {
+        const activeJobs = await this.prisma.job.findMany({
+            where: { isActive: true, lastVerified: { lt: new Date(Date.now() - 20 * 60 * 60 * 1000) } },
             select: { id: true },
         });
-
-        this.logger.log(`Starting verification for ${activeJobs.length} active jobs`);
-
-        let verified = 0;
-        let markedInactive = 0;
-        let errors = 0;
-
-        // Process in batches to avoid overwhelming the system
+        const results = { verified: 0, markedInactive: 0, errors: 0, inconclusive: 0 };
         const batchSize = 10;
         for (let i = 0; i < activeJobs.length; i += batchSize) {
-            const batch = activeJobs.slice(i, i + batchSize);
-
-            await Promise.all(
-                batch.map(async (job) => {
-                    try {
-                        const jobBefore = await this.prisma.job.findUnique({
-                            where: { id: job.id },
-                            select: { isActive: true },
-                        });
-
-                        await this.verifyJob(job.id);
-
-                        const jobAfter = await this.prisma.job.findUnique({
-                            where: { id: job.id },
-                            select: { isActive: true },
-                        });
-
-                        if (jobBefore?.isActive && !jobAfter?.isActive) {
-                            markedInactive++;
-                        } else {
-                            verified++;
-                        }
-                    } catch (error) {
-                        this.logger.error(`Error verifying job ${job.id}`, error);
-                        errors++;
-                    }
-                }),
-            );
-
-            // Small delay between batches
-            if (i + batchSize < activeJobs.length) {
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-            }
+            await Promise.all(activeJobs.slice(i, i + batchSize).map(async (job) => {
+                try {
+                    const outcome = await this.verifyJob(job.id);
+                    if (outcome === 'verified') results.verified++;
+                    else if (outcome === 'markedInactive') results.markedInactive++;
+                    else if (outcome !== 'skipped') results.inconclusive++;
+                } catch (error) {
+                    this.logger.error(`Error verifying job ${job.id}`, error);
+                    results.errors++;
+                }
+            }));
+            if (i + batchSize < activeJobs.length) await new Promise((resolve) => setTimeout(resolve, 1000));
         }
-
-        this.logger.log(
-            `Verification complete: ${verified} verified, ${markedInactive} marked inactive, ${errors} errors`,
-        );
-
-        return { verified, markedInactive, errors };
+        this.logger.log(`Verification complete: ${JSON.stringify(results)}`);
+        return results;
     }
 }

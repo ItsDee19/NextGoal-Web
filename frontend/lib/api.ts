@@ -5,6 +5,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 const api = axios.create({
     baseURL: API_URL,
+    timeout: 15000,
     headers: {
         "Content-Type": "application/json",
     },
@@ -50,6 +51,10 @@ export interface Job {
     postedDate: string | null;
     lastVerified: string;
     isActive: boolean;
+    lastVerificationError?: string | null;
+    availabilityCheckPending?: boolean;
+    isTranslated?: boolean;
+    translatedAt?: string | null;
 }
 
 export interface JobFilters {
@@ -59,11 +64,15 @@ export interface JobFilters {
     jobType?: string[];
     location?: string;
     company?: string;
+    source?: string[];
+    postedWithin?: "24h" | "7d" | "30d";
+    remote?: boolean;
     page?: number;
     limit?: number;
 }
 
 export interface JobsResponse {
+    previewNotice?: string;
     jobs: Job[];
     pagination: {
         page: number;
@@ -73,8 +82,15 @@ export interface JobsResponse {
     };
 }
 
+export interface JobStats {
+    totalActive: number;
+    addedLast24h: number;
+    lastVerifiedAt: string | null;
+    bySource: { source: string; _count: number }[];
+}
+
 export const jobsApi = {
-    getJobs: async (filters: JobFilters = {}): Promise<JobsResponse> => {
+    getJobs: async (filters: JobFilters = {}, signal?: AbortSignal): Promise<JobsResponse> => {
         const params = new URLSearchParams();
 
         if (filters.search) params.append("search", filters.search);
@@ -82,12 +98,15 @@ export const jobsApi = {
         if (filters.company) params.append("company", filters.company);
         if (filters.page) params.append("page", String(filters.page));
         if (filters.limit) params.append("limit", String(filters.limit));
+        if (filters.postedWithin) params.append("postedWithin", filters.postedWithin);
+        if (filters.remote) params.append("remote", "true");
+        filters.source?.forEach((source) => params.append("source", source));
 
         filters.experienceLevel?.forEach((level) => params.append("experienceLevel", level));
         filters.degree?.forEach((deg) => params.append("degree", deg));
         filters.jobType?.forEach((type) => params.append("jobType", type));
 
-        const response = await api.get(`/jobs?${params.toString()}`);
+        const response = await api.get(`/jobs?${params.toString()}`, { signal });
         return response.data;
     },
 
@@ -96,8 +115,8 @@ export const jobsApi = {
         return response.data;
     },
 
-    getStats: async () => {
-        const response = await api.get("/jobs/stats");
+    getStats: async (signal?: AbortSignal): Promise<JobStats> => {
+        const response = await api.get("/jobs/stats", { signal });
         return response.data;
     },
 
@@ -119,8 +138,8 @@ export const usersApi = {
         return response.data;
     },
 
-    getSavedJobs: async (): Promise<Job[]> => {
-        const response = await api.get("/users/me/saved-jobs");
+    getSavedJobs: async (signal?: AbortSignal): Promise<Job[]> => {
+        const response = await api.get("/users/me/saved-jobs", { signal });
         return response.data;
     },
 

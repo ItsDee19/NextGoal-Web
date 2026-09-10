@@ -1,0 +1,18 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["frontend/components", "frontend/app"],
+  "locale": "en-IN",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Form", "Scrollbar", "Toast", "CRUD"],
+  "ownership": {
+    "Select/Listbox": "native"
+  },
+  "requiredCommands": ["backend-unit", "backend-build", "frontend-unit", "frontend-typecheck", "frontend-build"],
+  "commands": {
+    "backend-unit": "npm --prefix backend test -- --runInBand",
+    "backend-build": "npm --prefix backend run build",
+    "frontend-unit": "npm --prefix frontend test",
+    "frontend-typecheck": "node frontend/node_modules/typescript/bin/tsc --noEmit --project frontend/tsconfig.json",
+    "frontend-build": "npm --prefix frontend run build"
+  }
+}

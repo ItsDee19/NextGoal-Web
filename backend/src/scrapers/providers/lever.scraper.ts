@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { ScrapedJob } from '../interfaces/scraped-job.interface';
+import { providerRequestOptions, validPostedDate } from './provider-utils';
 
 @Injectable()
 export class LeverScraper {
@@ -9,18 +10,15 @@ export class LeverScraper {
     async scrape(companyId: string): Promise<ScrapedJob[]> {
         try {
             // Lever provides a public JSON endpoint
-            const response = await axios.get(`${this.baseUrl}/${companyId}?mode=json`, {
-                headers: {
-                    'User-Agent': 'NextGoal Job Aggregator (contact@example.com)',
-                },
-            });
+            const response = await axios.get(`${this.baseUrl}/${encodeURIComponent(companyId)}?mode=json`, providerRequestOptions);
 
-            const jobs = response.data || [];
+            const jobs = response.data;
+            if (!Array.isArray(jobs)) throw new Error('Unexpected Lever response');
 
             return jobs.map((job: any) => this.parseJob(job, companyId));
         } catch (error) {
             console.error(`Lever scrape failed for ${companyId}:`, error.message);
-            return [];
+            throw error;
         }
     }
 
@@ -28,21 +26,23 @@ export class LeverScraper {
         return {
             title: job.text,
             company: companyId.charAt(0).toUpperCase() + companyId.slice(1),
-            location: job.categories?.location || 'Remote',
+            location: job.categories?.location || undefined,
             jobType: this.inferJobType(job.text, job.categories?.commitment),
             experienceLevel: this.inferExperienceLevel(job.text),
             degreeRequired: 'any',
             description: job.descriptionPlain || '',
-            applyUrl: job.hostedUrl,
+            applyUrl: job.applyUrl || job.hostedUrl,
             source: 'lever',
             sourceId: job.id,
-            postedDate: job.createdAt ? new Date(job.createdAt) : new Date(),
+            postedDate: validPostedDate(job.createdAt),
         };
     }
 
     private inferJobType(title: string, commitment?: string): string {
         if (commitment?.toLowerCase().includes('intern')) return 'internship';
         if (title.toLowerCase().includes('intern')) return 'internship';
+        if (commitment?.toLowerCase().includes('part')) return 'part-time';
+        if (commitment?.toLowerCase().includes('contract')) return 'contract';
         return 'full-time';
     }
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { ScrapedJob } from '../interfaces/scraped-job.interface';
+import { providerRequestOptions, validPostedDate } from './provider-utils';
 
 @Injectable()
 export class GreenhouseScraper {
@@ -10,18 +11,18 @@ export class GreenhouseScraper {
     async scrape(companyId: string): Promise<ScrapedJob[]> {
         try {
             // Greenhouse provides a public API
-            const response = await axios.get(`${this.baseUrl}/${companyId}/jobs`, {
-                headers: {
-                    'User-Agent': 'NextGoal Job Aggregator (contact@example.com)',
-                },
+            const response = await axios.get(`${this.baseUrl}/${encodeURIComponent(companyId)}/jobs`, {
+                ...providerRequestOptions,
+                params: { content: true },
             });
 
-            const jobs = response.data.jobs || [];
+            const jobs = response.data?.jobs;
+            if (!Array.isArray(jobs)) throw new Error('Unexpected Greenhouse response');
 
             return jobs.map((job: any) => this.parseJob(job, companyId));
         } catch (error) {
             console.error(`Greenhouse scrape failed for ${companyId}:`, error.message);
-            return [];
+            throw error;
         }
     }
 
@@ -29,7 +30,7 @@ export class GreenhouseScraper {
         return {
             title: job.title,
             company: companyId.charAt(0).toUpperCase() + companyId.slice(1),
-            location: job.location?.name || 'Remote',
+            location: job.location?.name || undefined,
             jobType: this.inferJobType(job.title),
             experienceLevel: this.inferExperienceLevel(job.title),
             degreeRequired: 'any',
@@ -37,7 +38,7 @@ export class GreenhouseScraper {
             applyUrl: job.absolute_url,
             source: 'greenhouse',
             sourceId: String(job.id),
-            postedDate: job.updated_at ? new Date(job.updated_at) : new Date(),
+            postedDate: validPostedDate(job.updated_at),
         };
     }
 

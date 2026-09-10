@@ -33,6 +33,17 @@ model Job {
   experienceLevel String?     @map("experience_level") // fresher, 1-3, 3-5, 5+
   degreeRequired  String?     @map("degree_required") // BTech, BALLB, LLB, Any
   description     String?
+  originalTitle          String?   @map("original_title")
+  originalDescription    String?   @map("original_description")
+  originalLocation       String?   @map("original_location")
+  sourceLanguage         String?   @map("source_language")
+  translationStatus      String    @default("pending") @map("translation_status")
+  translationFingerprint String?   @map("translation_fingerprint")
+  translationProvider    String?   @map("translation_provider")
+  translationAttempts    Int       @default(0) @map("translation_attempts")
+  translationError       String?   @map("translation_error")
+  translatedAt           DateTime? @map("translated_at")
+  translationNextRetryAt DateTime? @map("translation_next_retry_at")
   applyUrl        String      @map("apply_url")
   source          String      // greenhouse, lever, workday, ashby, smartrecruiters
   sourceId        String?     @map("source_id")
@@ -49,7 +60,21 @@ model Job {
   @@index([company])
   @@index([jobType])
   @@index([experienceLevel])
+  @@index([isActive, translationStatus])
+  @@index([translationStatus, translationNextRetryAt])
   @@map("jobs")
+}
+
+model JobTranslationCache {
+  fingerprint String   @id
+  title       String
+  description String?
+  location    String?
+  sourceLanguage String? @map("source_language")
+  provider    String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("job_translation_cache")
 }
 
 model SavedJob {

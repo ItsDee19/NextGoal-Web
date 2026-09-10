@@ -12,8 +12,8 @@ export class WorkdayScraper {
     //   3. Wait for [data-automation-id="jobResults"] and extract listings
     async scrape(companyId: string): Promise<ScrapedJob[]> {
         this.logger.warn(
-            `WorkdayScraper: scraping for "${companyId}" is not yet implemented — Playwright browser automation required. Returning empty list.`,
+            `WorkdayScraper: scraping for "${companyId}" is not yet implemented.`,
         );
-        return [];
+        throw new Error('Workday collection is not supported yet');
     }
 }

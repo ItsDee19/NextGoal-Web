@@ -10,10 +10,12 @@ import { SmartRecruitersScraper } from './providers/smartrecruiters.scraper';
 import { ScraperProcessor } from './scraper.processor';
 import { ScraperScheduler } from './scraper.scheduler';
 import { JobsModule } from '../jobs/jobs.module';
+import { TranslationModule } from '../translation/translation.module';
 
 @Module({
     imports: [
         JobsModule,
+        TranslationModule,
         BullModule.registerQueue({
             name: 'scraper',
         }),

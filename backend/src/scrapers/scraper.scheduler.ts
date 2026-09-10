@@ -1,17 +1,44 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { ScrapersService } from './scrapers.service';
 import { JobVerificationService } from '../jobs/job-verification.service';
+import { JobEnglishService } from '../translation/job-english.service';
 
 @Injectable()
-export class ScraperScheduler {
+export class ScraperScheduler implements OnApplicationBootstrap {
     private readonly logger = new Logger(ScraperScheduler.name);
 
     constructor(
         private scrapersService: ScrapersService,
         private jobVerificationService: JobVerificationService,
+        private englishService: JobEnglishService,
     ) {
         this.logger.log('Scraper scheduler initialized');
+    }
+
+    onApplicationBootstrap() {
+        // Launch after application initialization without delaying HTTP startup on source APIs.
+        void this.handleCatchUp();
+        void this.handleTranslationRetry();
+    }
+
+    @Cron('0 4 * * *', { name: 'english-publication-retry', timeZone: 'Asia/Kolkata', waitForCompletion: true })
+    async handleTranslationRetry() {
+        try {
+            await this.englishService.retryPending();
+        } catch (error) {
+            this.logger.error('English publication retry failed; pending originals remain stored', error);
+        }
+    }
+
+    @Cron('30 * * * *', { name: 'scrape-catch-up', timeZone: 'Asia/Kolkata', waitForCompletion: true })
+    async handleCatchUp() {
+        try {
+            const results = await this.scrapersService.runFullScrape({ onlyIfDue: true });
+            if (!results.skipped) this.logger.log(`Catch-up scrape: ${results.total} jobs, ${results.failed} failed boards`);
+        } catch (error) {
+            this.logger.error('Catch-up scrape failed; the next hourly check will retry', error);
+        }
     }
 
     /**
@@ -20,6 +47,7 @@ export class ScraperScheduler {
     @Cron('0 2 * * *', {
         name: 'daily-scrape',
         timeZone: 'Asia/Kolkata',
+        waitForCompletion: true,
     })
     async handleDailyScrape() {
         this.logger.log('Starting scheduled daily scrape...');
@@ -44,6 +72,7 @@ export class ScraperScheduler {
     @Cron('0 3 * * *', {
         name: 'daily-verification',
         timeZone: 'Asia/Kolkata',
+        waitForCompletion: true,
     })
     async handleDailyVerification() {
         this.logger.log('Starting scheduled job verification...');

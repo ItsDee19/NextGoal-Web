@@ -2,7 +2,8 @@ node_modules
 dist
 build
 .env
-.env.local
+.env.*
+!.env.example
 .DS_Store
 coverage
 .vscode
@@ -18,3 +19,7 @@ frontend/.next/
 
 # Codacy SARIF output file (should never be committed)
 results.sarif
+.npm-cache/
+artifacts/
+*.tsbuildinfo
+premium-audit.json
