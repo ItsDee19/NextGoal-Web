@@ -2,13 +2,16 @@
     "name": "nextgoal-frontend",
     "version": "1.0.0",
     "private": true,
+    "engines": {
+        "node": "22.x"
+    },
     "scripts": {
         "dev": "next dev",
         "build": "next build",
         "start": "next start",
         "lint": "next lint",
         "typecheck": "tsc --noEmit",
-        "test": "node --test app/auth/redirect.test.cjs lib/job-search.test.cjs lib/job-filter-state.test.cjs"
+        "test": "node --test app/auth/redirect.test.cjs lib/job-search.test.cjs lib/job-filter-state.test.cjs config/api-origin.test.cjs"
     },
     "dependencies": {
         "@radix-ui/react-checkbox": "^1.0.4",

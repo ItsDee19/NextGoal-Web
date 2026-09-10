@@ -4,6 +4,7 @@ import { JobsService } from './jobs.service';
 import { JobVerificationService } from './job-verification.service';
 import { JobFiltersDto } from './dto/job-filters.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { MaintenanceGuard } from '../common/maintenance.guard';
 
 @ApiTags('jobs')
 @Controller('jobs')
@@ -43,9 +44,9 @@ export class JobsController {
     }
 
     @Post('verify-all')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(MaintenanceGuard, JwtAuthGuard)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Manually trigger job verification (authenticated users only)' })
+    @ApiOperation({ summary: 'Verify jobs (combined mode only; user JWT and X-Maintenance-Secret required)' })
     async verifyAllJobs() {
         return this.jobVerificationService.verifyAllActiveJobs();
     }

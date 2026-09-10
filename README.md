@@ -12,6 +12,10 @@ NextGoal brings jobs from configured company career boards into one searchable v
 
 This is a configured-source aggregator. It does not search every job platform. A checked source or link does not guarantee an employer's identity or that a vacancy remains open when someone applies.
 
+## Deploy on Vercel with a free backend
+
+The prepared setup uses **Vercel for the frontend, Render Free for the API, Neon Free PostgreSQL, Upstash Free Redis, and GitHub Actions for daily maintenance**. Render runs with `APP_MODE=api`; its idle sleep does not stop the separate daily worker. Follow [DEPLOYMENT.md](DEPLOYMENT.md) for exact settings, secrets, database migration/backfill, first import and free-tier limits. The repository changes do not create provider accounts or deploy a live service.
+
 ## Source coverage
 
 | ATS | Configured board identifiers | Adapter |
@@ -30,11 +34,13 @@ The adapters use company-specific public posting endpoints, including the [Green
 
 ## Daily refresh and application links
 
-The backend schedules a full source refresh at **02:00 Asia/Kolkata every day** and link verification at **03:00 Asia/Kolkata**. Startup and hourly recovery checks at minute 30 run a catch-up when no refresh has completed or its completion is at least 24 hours old. Redis stores the completion timestamp and coordinates a renewable lock to keep backend replicas from running the full refresh concurrently. Source failures are reported per board; check those outcomes rather than assuming a completed run means every source succeeded. A completed attempt, including a partial failure, advances the recovery timestamp; individual failing boards currently wait for the next full run.
+For the free deployment, `.github/workflows/daily-jobs.yml` runs maintenance at **20:47 UTC daily / 02:17 Asia/Kolkata the following day**. It connects directly to PostgreSQL and Redis, without depending on the HTTP API staying awake. GitHub schedules require the workflow on the default branch, may be delayed, and can be disabled after 60 days of repository inactivity. [GitHub scheduled workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+
+The combined local/always-on mode retains a full source refresh at **02:00 Asia/Kolkata every day** and link verification at **03:00 Asia/Kolkata**. Startup and hourly recovery checks at minute 30 run a catch-up when no refresh has completed or its completion is at least 24 hours old. Redis stores the completion timestamp and coordinates a renewable lock to keep full refreshes from running concurrently. Source failures are reported per board; check those outcomes rather than assuming a completed run means every source succeeded. A completed attempt, including a partial failure, advances the recovery timestamp; individual failing boards currently wait for the next full run.
 
 The verifier validates the URL and destination, then checks the response. Timeouts, rate limits, and temporary server failures are inconclusive; repeated definitive missing/closed responses can deactivate a job. A listing's check timestamp describes a check attempt. It is not an employer verification badge or a guaranteed successful application. Removing a listing solely because a provider is temporarily unreachable would discard valid opportunities, so source health and freshness need monitoring.
 
-The schedule is hosted by the running NestJS process, which registers scheduled work at application startup. [NestJS task scheduling](https://docs.nestjs.com/techniques/task-scheduling).
+Use one scheduling approach for a deployment. `APP_MODE=api` disables the in-process maintenance work and Redis connection; it is the Render configuration. `APP_MODE=combined` is the default when the variable is omitted and needs a continuously running NestJS process for its own schedule. [NestJS task scheduling](https://docs.nestjs.com/techniques/task-scheduling).
 
 ## English publication and translation
 
@@ -47,7 +53,7 @@ Public job titles, descriptions and locations must pass the English publication 
 | `TRANSLATION_PROVIDER=libretranslate` | Set `LIBRETRANSLATE_URL` to the service base URL, without `/translate`; set `LIBRETRANSLATE_API_KEY` if the service requires it. |
 | `TRANSLATION_PROVIDER=google` | Set `GOOGLE_TRANSLATE_API_KEY` for the configured Google Cloud Translation Basic v2 service/account. |
 
-Enabling a provider permits translation calls during ingestion and backfill. Successful English output is cached by source-content fingerprint. Incomplete or unconfirmed output remains private for retry. Startup and **04:00 Asia/Kolkata daily** retry up to 1,000 due active queued records; failed attempts use persisted retry delays from one hour to 24 hours. A missing provider leaves records queued with a 24-hour retry delay. The daily worker processes records when they are due; these delays do not imply an hourly translation worker.
+Enabling a provider permits translation calls during ingestion and backfill. Successful English output is cached by source-content fingerprint. Incomplete or unconfirmed output remains private for retry. Combined mode retries up to 1,000 due active queued records at startup and **04:00 Asia/Kolkata daily**. The separate Actions worker includes due translation retries in its `all` run. Failed attempts use persisted retry delays from one hour to 24 hours. A missing provider leaves records queued with a 24-hour retry delay. These delays do not imply an hourly translation worker. Configure provider credentials on the worker for the free deployment; the hosting tiers do not include unlimited free translation.
 
 Existing databases require migration **`20260910000000_english_job_publication`** and a backfill. The migration preserves the old source text and marks existing jobs pending, so they stay out of public results until processed. After setting the provider and applying migrations, run from `backend`:
 
@@ -61,7 +67,7 @@ No live translation provider or database was configured during this revision. Fu
 
 ## Local setup
 
-The project uses Next.js 14.2.35/React 18 for the frontend, NestJS for the API, PostgreSQL with Prisma 5, and Redis with Bull. Redis is required by the backend queue configuration. The Compose file starts the local database and Redis; it does not deploy the application.
+The project uses Next.js 14.2.35/React 18 for the frontend, NestJS for the API, PostgreSQL with Prisma 5, and Redis with Bull for maintenance. Combined local mode needs Redis; `APP_MODE=api` serves HTTP without it. The Compose file starts the local database and Redis; it does not deploy the application.
 
 Use Node.js 22 or newer with the resolved dependencies, PostgreSQL 15+, and Redis 7+. Confirm `node --version` in the same terminal used for npm commands; this revision's local checks used the bundled Node.js 24 runtime. Start from the repository root:
 
@@ -137,15 +143,13 @@ It creates **no job listings**. It also retires the eight known fabricated fixtu
 | `/users/me/preferences` | PUT | Update stored preferences; bearer token required |
 | `/users/me/saved-jobs` | GET | Current user's saved jobs |
 | `/users/me/saved-jobs/:jobId` | POST / DELETE | Save or unsave a job |
-| `/scrapers/companies` | GET | Configured company boards |
-| `/scrapers/run` | POST | Full refresh; bearer token required |
-| `/scrapers/company?source=greenhouse&companyId=stripe` | POST | Refresh one company board; bearer token required |
-| `/scrapers/verify` | POST | Link-verification run; bearer token required |
-| `/jobs/verify-all` | POST | Link-verification run; bearer token required |
+| `/health` | GET | HTTP service health; does not establish catalog freshness |
 
 Array filters accept repeated query parameters, for example `source=greenhouse&source=lever`. `postedWithin` accepts `24h`, `7d`, or `30d`; `remote=true` matches remote location labels. Jobs without a supplied posting date do not match a posting-age filter. Remote location text and inferred experience/degree labels are limited metadata, not complete professional-category classification.
 
-Manual maintenance routes currently accept any authenticated account. Restrict them to operators or a scheduler credential before exposing the API publicly; the daily schedule itself does not require a user's browser or session. For local testing, send the `accessToken` returned by login as `Authorization: Bearer <accessToken>` when invoking `/scrapers/run`. Inspect the response's per-board results before claiming full coverage.
+`APP_MODE=api` disables HTTP maintenance: `/scrapers/*` is absent and `POST /jobs/verify-all` returns 404. Use `npm run jobs:maintain -- --operation=all` from `backend`, with the worker's database/Redis/provider environment settings, or the **Daily job refresh** Actions workflow. Operations are `all`, `refresh`, `translate`, and `verify`; `all` performs them in refresh/translation/verification order. The worker does not require a user's browser or login token. It reports an unsuccessful exit for source or processing failures while allowing later stages to finish. Pending translation with provider `none` is expected. Inspect aggregate success/failure counts before claiming full coverage; investigate individual board failures in a controlled local run without exposing credentials or provider responses in public workflow logs.
+
+In combined mode, `/scrapers/run`, `/scrapers/company`, `/scrapers/verify` and `/jobs/verify-all` require both a bearer login token and an `X-Maintenance-Secret` header matching a configured `MAINTENANCE_SECRET` of at least 32 characters. Missing or short configuration disables those mutations with 404. A normal authenticated user alone cannot invoke maintenance. These routes are optional operator tools; the daily schedule and CLI do not require this HTTP secret.
 
 ## Production and verification
 
@@ -155,9 +159,9 @@ Build each application from its own directory:
 npm run build
 ```
 
-Start the backend with `npm run start:prod` and the frontend with `npm run start`. Set the deployed frontend's `NEXT_PUBLIC_API_URL` to the deployed backend origin and the backend's `FRONTEND_URL` to the deployed frontend origin. Apply committed database migrations in the deployment pipeline with `npx prisma migrate deploy`, then run the English backfill when upgrading an existing catalog. [Prisma deployment reference](https://docs.prisma.io/docs/cli/migrate/deploy).
+Start the backend with `npm run start:prod`; Vercel manages the frontend deployment. Set the frontend's `NEXT_PUBLIC_API_URL` to the deployed backend HTTPS origin and the backend's `FRONTEND_URL` to the deployed frontend origin. Multiple explicitly trusted frontend origins can be comma-separated. Apply committed database migrations with `npx prisma migrate deploy` before deploying schema-dependent code, then run the English backfill when upgrading an existing catalog. Render Free setup uses the local migration procedure in [DEPLOYMENT.md](DEPLOYMENT.md); builds and daily maintenance do not apply migrations automatically. [Prisma deployment reference](https://docs.prisma.io/docs/cli/migrate/deploy).
 
-The backend must stay running for its in-process scheduler and queue worker. Hosting only the frontend does not refresh the job catalog. Provision durable PostgreSQL and Redis, use production secrets, and verify refresh completion and recovery in the deployed environment.
+For the free setup, the Render API can sleep while GitHub Actions refreshes the catalog. Configure the database and worker secrets, merge the workflow into the default branch, run the first import manually, and verify scheduled completion. If you instead use combined mode, its in-process scheduler and queue worker require a continuously running backend. Hosting only the frontend never refreshes the job catalog.
 
 Focused backend checks:
 
@@ -177,3 +181,5 @@ npm run build
 ```
 
 See [VERIFICATION.md](VERIFICATION.md) for recorded test results, browser checks, public-source probes, and outstanding integration checks. Live PostgreSQL/Redis integration, translation configuration/backfill, OAuth configuration, and two consecutive daily runs require a configured environment. A successful build or unit test is not proof that a deployed scheduler is running. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for deployment readiness, a prioritized feature roadmap, effort estimates, and measurable acceptance criteria. [DESIGN.md](DESIGN.md) and [UX-CONTRACT.md](UX-CONTRACT.md) record the shared design and interaction rules.
+
+`.github/workflows/build.yml` runs tests and builds for both applications on Linux/Node.js 22 on pushes and pull requests, without a live database or deployment credentials. It is separate from the daily workflow that processes jobs using configured repository secrets.

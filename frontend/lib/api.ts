@@ -5,7 +5,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 const api = axios.create({
     baseURL: API_URL,
-    timeout: 15000,
+    // Render Free may need about a minute to wake after idling. Mutations are
+    // never automatically retried; cancellable searches still use their signal.
+    timeout: 90000,
     headers: {
         "Content-Type": "application/json",
     },

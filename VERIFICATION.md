@@ -2,7 +2,26 @@
 
 Reviewed on 10 September 2026. Local checks used the bundled Node.js 24 runtime; use Node.js 22+ for the documented npm commands. This records observed results, not a production deployment. The current revision adds the dark responsive redesign and English-only publication pipeline; earlier UI evidence is identified separately below.
 
-## Automated checks
+## Deployment preparation
+
+The follow-up adds Vercel frontend configuration, a Render Free API blueprint, HTTP-only API mode, and an independent GitHub Actions daily maintenance workflow. [DEPLOYMENT.md](DEPLOYMENT.md) records provider setup, migrations/backfill, default-branch scheduling requirements and free-tier limits verified against official provider documentation on 10 September 2026. No hosting accounts, database services or live deployments were provisioned. Local deployment checks used Windows and the bundled Node.js 24 runtime; the deployment target is Node.js 22.
+
+| Deployment preparation check | Result |
+| --- | --- |
+| Backend tests | Passed: 223 tests across 17 suites |
+| Backend production build | Passed: `dist/main.js` generated; tests and development seed excluded from runtime output |
+| API startup and HTTP behavior | Nine checks passed with the real Nest application and a mocked database: no Redis/collector/scheduler providers, health without database queries, exact CORS origins, and maintenance blocked |
+| Worker failure cleanup | CLI configuration/argument failures and unreachable local test services exited with redacted errors and closed resources; no production services contacted |
+| Frontend tests | Passed: 108 tests |
+| Frontend production build and TypeScript | Passed: all 10 Next.js routes generated |
+| Vercel API-origin validation | Confirmed missing origin fails with `VERCEL=1`; a valid public HTTPS origin is accepted |
+| Deployment configuration syntax | Render/Actions YAML parsed; Vercel JSON and Node 22 package/lock metadata checked |
+
+This follow-up does not redesign the UI; it extends the API request timeout to 90 seconds for Render's cold start without automatically repeating mutations. The automated and browser evidence below is the earlier UI/English-publication baseline, separate from deployment preparation.
+
+The added `.github/workflows/build.yml` runs frontend/backend tests and builds on Linux with Node.js 22 for pushes and pull requests. It uses placeholder database/API configuration for checks and no live hosting secrets or database. Adding this workflow is not evidence that its remote run has passed.
+
+## Earlier UI and English-publication automated baseline
 
 | Check | Result |
 | --- | --- |
@@ -73,4 +92,4 @@ An English-policy check at **2026-09-10 11:00 UTC** assessed the original twelve
 
 PostgreSQL/Redis integration, a deployed ingestion run, configured Google/Supabase OAuth, two consecutive scheduled daily runs, and account flows using real backend accounts were not verified. Neither the new English migration/backfill nor a live Google/LibreTranslate request was exercised against a configured database/service. Provider `none` publishes confidently English records and retains foreign/uncertain originals privately; multilingual-source coverage requires a configured provider and completed backfill.
 
-Provision the deployment environment and complete these checks before relying on the service. Manual maintenance routes still accept any authenticated account and require operator authorization before public deployment. See [README.md](README.md) for translation setup and [IMPROVEMENTS.md](IMPROVEMENTS.md) for the launch-readiness work. Work targets the feature branch `codex/job-discovery-refresh`; this report does not establish a push, merge to `main`, or deployment.
+Provision the deployment environment and complete these checks before relying on the service. Deploy the public service with `APP_MODE=api`, which omits HTTP maintenance routes, and exercise the independent worker through its configured workflow. See [DEPLOYMENT.md](DEPLOYMENT.md) for the free hosting setup, [README.md](README.md) for translation behavior and [IMPROVEMENTS.md](IMPROVEMENTS.md) for remaining operational work. Work targets the feature branch `codex/job-discovery-refresh`; this report does not establish a merge to `main` or a live deployment.

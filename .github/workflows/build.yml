@@ -1,0 +1,47 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [frontend, backend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      # Build/test placeholders only. This workflow never connects to a real database.
+      DATABASE_URL: postgresql://test:test@localhost:5432/nextgoal_test
+      DIRECT_URL: postgresql://test:test@localhost:5432/nextgoal_test
+      NEXT_PUBLIC_API_URL: https://api.example.test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - run: npm ci --include=dev
+      - if: matrix.app == 'backend'
+        run: npm run prisma:generate
+      - if: matrix.app == 'backend'
+        run: npm test -- --runInBand
+      - if: matrix.app == 'frontend'
+        run: npm test
+      - run: npm run build

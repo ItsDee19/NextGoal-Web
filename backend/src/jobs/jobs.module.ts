@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { JobsService } from './jobs.service';
 import { JobsController } from './jobs.controller';
-import { JobVerificationService } from './job-verification.service';
+import { JobsCoreModule } from './jobs-core.module';
+import { MaintenanceGuard } from '../common/maintenance.guard';
 
 @Module({
+    imports: [JobsCoreModule],
     controllers: [JobsController],
-    providers: [JobsService, JobVerificationService],
-    exports: [JobsService, JobVerificationService],
+    providers: [MaintenanceGuard],
+    exports: [JobsCoreModule],
 })
 export class JobsModule { }

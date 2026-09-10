@@ -3,17 +3,20 @@
   "version": "1.0.0",
   "description": "NextGoal Job Aggregation API",
   "main": "dist/main.js",
+  "engines": { "node": "22.x" },
   "scripts": {
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/main.js",
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "jobs:translate": "ts-node scripts/backfill-english.ts"
+    "jobs:translate": "ts-node scripts/backfill-english.ts",
+    "jobs:maintain": "ts-node scripts/run-maintenance.ts",
+    "prisma:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@nestjs/bull": "^10.0.1",

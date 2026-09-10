@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { ScrapersService } from './scrapers.service';
 import { JobVerificationService } from '../jobs/job-verification.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { MaintenanceGuard } from '../common/maintenance.guard';
 
 @ApiTags('scrapers')
 @Controller('scrapers')
@@ -13,17 +14,17 @@ export class ScrapersController {
     ) { }
 
     @Post('run')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(MaintenanceGuard, JwtAuthGuard)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Trigger a full scrape (authenticated users only)' })
+    @ApiOperation({ summary: 'Trigger a full scrape (user JWT and X-Maintenance-Secret required)' })
     async runScrape() {
         return this.scrapersService.runFullScrape();
     }
 
     @Post('company')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(MaintenanceGuard, JwtAuthGuard)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Scrape a specific company (authenticated users only)' })
+    @ApiOperation({ summary: 'Scrape a company (user JWT and X-Maintenance-Secret required)' })
     @ApiQuery({ name: 'source', example: 'greenhouse' })
     @ApiQuery({ name: 'companyId', example: 'stripe' })
     async scrapeCompany(
@@ -39,9 +40,9 @@ export class ScrapersController {
     }
 
     @Post('verify')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(MaintenanceGuard, JwtAuthGuard)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Trigger job verification run (authenticated users only)' })
+    @ApiOperation({ summary: 'Verify jobs (user JWT and X-Maintenance-Secret required)' })
     async runVerification() {
         return this.jobVerificationService.verifyAllActiveJobs();
     }

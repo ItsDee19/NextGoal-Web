@@ -1,0 +1,31 @@
+# Merge the deployment changes into the default branch before importing this Blueprint.
+# Only the HTTP API runs here;
+# GitHub Actions owns daily ingestion so Render Free may safely sleep.
+services:
+  - type: web
+    name: nextgoal-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: APP_MODE
+        value: api
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: ALLOW_DEMO_SEED
+        value: "false"

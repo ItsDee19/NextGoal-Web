@@ -1,0 +1,88 @@
+name: Daily job refresh
+
+on:
+  schedule:
+    # 02:17 Asia/Kolkata. GitHub may delay scheduled runs; this is not an exact-time guarantee.
+    - cron: '47 20 * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Maintenance operation
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - refresh
+          - translate
+          - verify
+      force_translation:
+        description: Retry pending translations before their normal retry time (up to 1,000 jobs)
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nextgoal-daily-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    env:
+      NODE_ENV: production
+      APP_MODE: api
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      TRANSLATION_PROVIDER: ${{ vars.TRANSLATION_PROVIDER || 'none' }}
+      GOOGLE_TRANSLATE_API_KEY: ${{ secrets.GOOGLE_TRANSLATE_API_KEY }}
+      LIBRETRANSLATE_URL: ${{ secrets.LIBRETRANSLATE_URL }}
+      LIBRETRANSLATE_API_KEY: ${{ secrets.LIBRETRANSLATE_API_KEY }}
+      MAINTENANCE_OPERATION: ${{ inputs.operation || 'all' }}
+      FORCE_TRANSLATION: ${{ inputs.force_translation || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate configuration
+        run: |
+          node <<'NODE'
+          const required = ['DATABASE_URL', 'DIRECT_URL', 'REDIS_URL'];
+          const provider = process.env.TRANSLATION_PROVIDER.toLowerCase();
+          if (!['none', 'google', 'libretranslate'].includes(provider)) {
+            console.error('TRANSLATION_PROVIDER must be none, google or libretranslate.');
+            process.exit(1);
+          }
+          if (provider === 'google') required.push('GOOGLE_TRANSLATE_API_KEY');
+          if (provider === 'libretranslate') required.push('LIBRETRANSLATE_URL');
+          const missing = required.filter(name => !process.env[name]?.trim());
+          if (missing.length) {
+            console.error(`Missing repository Actions secrets: ${missing.join(', ')}`);
+            process.exit(1);
+          }
+          NODE
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install maintenance dependencies
+        run: npm ci --include=dev
+      - name: Generate database client
+        run: npm run prisma:generate
+      # Apply reviewed production migrations separately before enabling this workflow.
+      - name: Run maintenance
+        run: |
+          args=("--operation=$MAINTENANCE_OPERATION")
+          if [[ "$FORCE_TRANSLATION" == 'true' ]]; then args+=(--force-translation); fi
+          npm run jobs:maintain -- "${args[@]}"
