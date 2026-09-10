@@ -1,212 +1,75 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { JobFilters } from "@/lib/api";
+import type { JobFilterUpdate } from "@/lib/job-filter-state";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { X, SlidersHorizontal } from "lucide-react";
-import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ChevronDown, SlidersHorizontal, X } from "lucide-react";
+import { countFilters, degreeLabels, experienceLabels, jobTypeLabels, sourceLabels } from "@/lib/job-search";
 
-interface JobFiltersProps {
-    filters: JobFilters;
-    onChange: (filters: JobFilters) => void;
-    filterOptions?: {
-        companies: string[];
-        locations: string[];
-    };
-}
-
-const experienceLevels = [
-    { value: "fresher", label: "Fresher" },
-    { value: "1-3", label: "1-3 Years" },
-    { value: "3-5", label: "3-5 Years" },
-    { value: "5+", label: "5+ Years" },
-];
-
-const degrees = [
-    { value: "btech", label: "B.Tech" },
-    { value: "ballb", label: "BA LLB" },
-    { value: "llb", label: "LLB" },
-    { value: "any", label: "Any Degree" },
-];
-
-const jobTypes = [
-    { value: "full-time", label: "Full-time" },
-    { value: "internship", label: "Internship" },
-];
-
-export function JobFiltersPanel({ filters, onChange, filterOptions }: JobFiltersProps) {
-    const [showMobile, setShowMobile] = useState(false);
-
-    const toggleArrayFilter = (key: keyof JobFilters, value: string) => {
-        const current = (filters[key] as string[] | undefined) || [];
-        const updated = current.includes(value)
-            ? current.filter((v) => v !== value)
-            : [...current, value];
-        onChange({ ...filters, [key]: updated, page: 1 });
-    };
-
-    const clearFilters = () => {
-        onChange({
-            search: filters.search,
-            page: 1,
-            limit: 20,
+export function JobFiltersPanel({ filters, onChange }: { filters: JobFilters; onChange: (change: JobFilterUpdate) => void }) {
+    const [open, setOpen] = useState(false);
+    const companyRef = useRef<HTMLInputElement>(null);
+    useEffect(() => {
+        const media = window.matchMedia("(min-width: 901px)");
+        const sync = () => setOpen(media.matches);
+        sync();
+        media.addEventListener("change", sync);
+        return () => media.removeEventListener("change", sync);
+    }, []);
+    const toggle = (key: "source" | "experienceLevel" | "jobType" | "degree", value: string) => {
+        onChange((current) => {
+            const values = current[key] || [];
+            return { ...current, [key]: values.includes(value) ? values.filter((item) => item !== value) : [...values, value], page: 1 };
         });
     };
-
-    const activeFilterCount =
-        (filters.experienceLevel?.length || 0) +
-        (filters.degree?.length || 0) +
-        (filters.jobType?.length || 0) +
-        (filters.location ? 1 : 0) +
-        (filters.company ? 1 : 0);
-
-    const FilterContent = () => (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <h3 className="font-semibold flex items-center gap-2">
-                    <SlidersHorizontal className="h-4 w-4" />
-                    Filters
-                    {activeFilterCount > 0 && (
-                        <span className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
-                            {activeFilterCount}
-                        </span>
-                    )}
-                </h3>
-                {activeFilterCount > 0 && (
-                    <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
-                        Clear all
-                    </Button>
-                )}
-            </div>
-
-            {/* Experience Level */}
-            <div>
-                <h4 className="text-sm font-medium mb-3">Experience Level</h4>
-                <div className="space-y-2">
-                    {experienceLevels.map((level) => (
-                        <div key={level.value} className="flex items-center gap-2">
-                            <Checkbox
-                                id={`exp-${level.value}`}
-                                checked={filters.experienceLevel?.includes(level.value)}
-                                onCheckedChange={() => toggleArrayFilter("experienceLevel", level.value)}
-                            />
-                            <Label htmlFor={`exp-${level.value}`} className="text-sm cursor-pointer">
-                                {level.label}
-                            </Label>
-                        </div>
-                    ))}
+    const groups = [
+        { key: "experienceLevel" as const, label: "Experience level", values: experienceLabels },
+        { key: "jobType" as const, label: "Job type", values: jobTypeLabels },
+        { key: "source" as const, label: "Hiring platform", values: sourceLabels },
+        { key: "degree" as const, label: "Education", values: degreeLabels },
+    ];
+    const count = countFilters(filters);
+    return <aside aria-label="Job filters">
+        <details className="filters-panel" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+            <summary className="filters-title"><SlidersHorizontal size={16} aria-hidden="true" />Filters {count > 0 && <span className="ml-1 rounded bg-accent px-1.5 py-0.5 text-xs text-primary">{count}</span>}<ChevronDown className="mobile-filter-chevron ml-auto" size={16} /></summary>
+            <div className="filters-body">
+                <div>
+                    <label htmlFor="date-posted" className="block text-xs font-semibold mb-2">Date posted</label>
+                    <select id="date-posted" className="filter-select" value={filters.postedWithin || ""} onChange={(event) => {
+                        const postedWithin = (event.target.value || undefined) as JobFilters["postedWithin"];
+                        onChange((current) => ({ ...current, postedWithin, page: 1 }));
+                    }}>
+                        <option value="">Any time</option><option value="24h">Past 24 hours</option><option value="7d">Past 7 days</option><option value="30d">Past 30 days</option>
+                    </select>
+                    <label className="filter-check mt-3"><Checkbox checked={!!filters.remote} onCheckedChange={(checked) => onChange((current) => ({ ...current, remote: checked === true || undefined, page: 1 }))} />Remote opportunities</label>
                 </div>
-            </div>
-
-            {/* Degree */}
-            <div>
-                <h4 className="text-sm font-medium mb-3">Degree Required</h4>
-                <div className="space-y-2">
-                    {degrees.map((degree) => (
-                        <div key={degree.value} className="flex items-center gap-2">
-                            <Checkbox
-                                id={`deg-${degree.value}`}
-                                checked={filters.degree?.includes(degree.value)}
-                                onCheckedChange={() => toggleArrayFilter("degree", degree.value)}
-                            />
-                            <Label htmlFor={`deg-${degree.value}`} className="text-sm cursor-pointer">
-                                {degree.label}
-                            </Label>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Job Type */}
-            <div>
-                <h4 className="text-sm font-medium mb-3">Job Type</h4>
-                <div className="space-y-2">
-                    {jobTypes.map((type) => (
-                        <div key={type.value} className="flex items-center gap-2">
-                            <Checkbox
-                                id={`type-${type.value}`}
-                                checked={filters.jobType?.includes(type.value)}
-                                onCheckedChange={() => toggleArrayFilter("jobType", type.value)}
-                            />
-                            <Label htmlFor={`type-${type.value}`} className="text-sm cursor-pointer">
-                                {type.label}
-                            </Label>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Location */}
-            <div>
-                <h4 className="text-sm font-medium mb-3">Location</h4>
-                <Input
-                    placeholder="e.g. Bangalore, Remote"
-                    value={filters.location || ""}
-                    onChange={(e) => onChange({ ...filters, location: e.target.value || undefined, page: 1 })}
-                />
-            </div>
-
-            {/* Company */}
-            <div>
-                <h4 className="text-sm font-medium mb-3">Company</h4>
-                <Input
-                    placeholder="e.g. Google, Microsoft"
-                    value={filters.company || ""}
-                    onChange={(e) => onChange({ ...filters, company: e.target.value || undefined, page: 1 })}
-                />
-            </div>
-        </div>
-    );
-
-    return (
-        <>
-            {/* Desktop Filter Panel */}
-            <aside className="hidden lg:block w-64 flex-shrink-0">
-                <div className="sticky top-24 bg-white dark:bg-slate-900 rounded-xl border p-5">
-                    <FilterContent />
-                </div>
-            </aside>
-
-            {/* Mobile Filter Button */}
-            <div className="lg:hidden fixed bottom-4 left-4 right-4 z-40">
-                <Button
-                    onClick={() => setShowMobile(true)}
-                    className="w-full shadow-lg bg-gradient-to-r from-blue-600 to-indigo-600"
-                >
-                    <SlidersHorizontal className="h-4 w-4 mr-2" />
-                    Filters
-                    {activeFilterCount > 0 && ` (${activeFilterCount})`}
-                </Button>
-            </div>
-
-            {/* Mobile Filter Modal */}
-            {showMobile && (
-                <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setShowMobile(false)}>
-                    <div
-                        className="absolute bottom-0 left-0 right-0 bg-white dark:bg-slate-900 rounded-t-2xl p-6 max-h-[80vh] overflow-y-auto"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-lg font-semibold">Filters</h2>
-                            <Button variant="ghost" size="icon" onClick={() => setShowMobile(false)}>
-                                <X className="h-5 w-5" />
-                            </Button>
-                        </div>
-                        <FilterContent />
-                        <div className="mt-6 flex gap-3">
-                            <Button variant="outline" className="flex-1" onClick={clearFilters}>
-                                Clear
-                            </Button>
-                            <Button className="flex-1" onClick={() => setShowMobile(false)}>
-                                Apply
-                            </Button>
-                        </div>
+                <div className="mt-5 space-y-2">
+                    <Label htmlFor="company-filter" className="text-xs font-semibold">Company</Label>
+                    <div className="relative">
+                        <Input ref={companyRef} id="company-filter" value={filters.company || ""} maxLength={200} placeholder="e.g. Stripe" autoComplete="off" className="h-11 pr-11 text-sm"
+                            onChange={(event) => {
+                                const company = event.target.value || undefined;
+                                onChange((current) => ({ ...current, company, page: 1 }));
+                            }} />
+                        {filters.company && <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-11 w-11" aria-label="Clear company filter"
+                            onClick={() => { onChange((current) => ({ ...current, company: undefined, page: 1 })); companyRef.current?.focus(); }}><X size={13} /></Button>}
                     </div>
                 </div>
-            )}
-        </>
-    );
+                {groups.map((group) => <fieldset className="filter-group" key={group.key}>
+                    <legend>{group.label}</legend>
+                    {Object.entries(group.values).map(([value, label]) => <label className="filter-check" key={value}>
+                        <Checkbox checked={filters[group.key]?.includes(value) || false} onCheckedChange={() => toggle(group.key, value)} />{label}
+                    </label>)}
+                </fieldset>)}
+                <div className="col-span-full mt-4">
+                    <Button variant="ghost" size="sm" className="w-full text-muted-foreground" disabled={!count} onClick={() => onChange((current) => ({ search: current.search, location: current.location, page: 1, limit: current.limit || 20 }))}><X size={13} className="mr-1.5" />Reset filters</Button>
+                    <p className="text-[10px] leading-relaxed text-muted-foreground mt-3">Experience and education may be estimated. Confirm requirements on the application page.</p>
+                </div>
+            </div>
+        </details>
+    </aside>;
 }

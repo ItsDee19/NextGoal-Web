@@ -3,27 +3,27 @@ import { ArrowLeft, Scale, Shield, FileText } from "lucide-react";
 
 export default function TermsPage() {
     return (
-        <div className="max-w-3xl mx-auto">
-            <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-8">
+        <div className="account-shell max-w-3xl mx-auto py-10">
+            <Link href="/" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground mb-8">
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back to jobs
             </Link>
 
-            <div className="bg-white dark:bg-slate-900 rounded-xl border p-8">
+            <div className="account-panel p-6 sm:p-8">
                 <div className="flex items-center gap-3 mb-8">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
-                        <Scale className="h-6 w-6 text-white" />
+                    <div className="account-mark flex h-12 w-12 shrink-0 items-center justify-center">
+                        <Scale className="h-6 w-6" aria-hidden="true" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold">Terms of Service & Disclaimer</h1>
+                        <h1 className="premium-heading">Terms of Service & Disclaimer</h1>
                         <p className="text-muted-foreground">Last updated: February 2026</p>
                     </div>
                 </div>
 
-                <div className="prose prose-slate dark:prose-invert max-w-none">
+                <div className="max-w-none text-sm leading-7">
                     <section className="mb-8">
                         <h2 className="flex items-center gap-2 text-xl font-semibold mb-4">
-                            <FileText className="h-5 w-5 text-blue-600" />
+                            <FileText className="h-5 w-5 text-primary" />
                             About NextGoal
                         </h2>
                         <p className="text-muted-foreground">
@@ -35,11 +35,11 @@ export default function TermsPage() {
 
                     <section className="mb-8">
                         <h2 className="flex items-center gap-2 text-xl font-semibold mb-4">
-                            <Shield className="h-5 w-5 text-blue-600" />
+                            <Shield className="h-5 w-5 text-primary" />
                             Disclaimer
                         </h2>
-                        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-4 mb-4">
-                            <p className="text-amber-800 dark:text-amber-200 text-sm">
+                        <div className="bg-accent/40 border border-border rounded-lg p-4 mb-4">
+                            <p className="text-foreground text-sm">
                                 <strong>Important:</strong> NextGoal is an aggregator, not an employer.
                                 We do not post jobs, verify employers, or guarantee the accuracy of any listing.
                             </p>
@@ -61,7 +61,6 @@ export default function TermsPage() {
                         <ul className="space-y-2 text-muted-foreground">
                             <li>• <strong>Greenhouse</strong> - Public job board API</li>
                             <li>• <strong>Lever</strong> - Public career page data</li>
-                            <li>• <strong>Workday</strong> - Public career sites</li>
                             <li>• <strong>Ashby</strong> - Public job board API</li>
                             <li>• <strong>SmartRecruiters</strong> - Public job listings</li>
                         </ul>
@@ -99,7 +98,7 @@ export default function TermsPage() {
                         <p className="text-muted-foreground">
                             If you have questions about these terms or need to report an issue,
                             please contact us at{" "}
-                            <a href="mailto:support@nextgoal.example" className="text-blue-600 hover:underline">
+                            <a href="mailto:support@nextgoal.example" className="text-primary hover:underline">
                                 support@nextgoal.example
                             </a>
                         </p>

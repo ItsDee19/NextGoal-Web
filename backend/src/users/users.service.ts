@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { publicJobSelect, publicJobWhere, toPublicJob } from '../jobs/public-job';
 
 @Injectable()
 export class UsersService {
@@ -51,19 +52,31 @@ export class UsersService {
         return this.prisma.user.update({
             where: { id },
             data: { preferences },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                preferences: true,
+                createdAt: true,
+            },
         });
     }
 
     async getSavedJobs(userId: string) {
         const savedJobs = await this.prisma.savedJob.findMany({
-            where: { userId },
-            include: { job: true },
+            where: { userId, job: { is: publicJobWhere } },
+            select: { job: { select: publicJobSelect } },
             orderBy: { savedAt: 'desc' },
         });
-        return savedJobs.map((sj) => sj.job);
+        return savedJobs.map((saved) => toPublicJob(saved.job));
     }
 
     async saveJob(userId: string, jobId: string) {
+        const available = await this.prisma.job.findFirst({
+            where: { id: jobId, ...publicJobWhere },
+            select: { id: true },
+        });
+        if (!available) throw new NotFoundException('Job not found');
         return this.prisma.savedJob.upsert({
             where: {
                 userId_jobId: { userId, jobId },
@@ -77,18 +90,14 @@ export class UsersService {
     }
 
     async unsaveJob(userId: string, jobId: string) {
-        return this.prisma.savedJob.delete({
-            where: {
-                userId_jobId: { userId, jobId },
-            },
-        });
+        // Idempotent removal does not reveal whether an unpublished job was saved.
+        return this.prisma.savedJob.deleteMany({ where: { userId, jobId } });
     }
 
     async isJobSaved(userId: string, jobId: string) {
-        const saved = await this.prisma.savedJob.findUnique({
-            where: {
-                userId_jobId: { userId, jobId },
-            },
+        const saved = await this.prisma.savedJob.findFirst({
+            where: { userId, jobId, job: { is: publicJobWhere } },
+            select: { jobId: true },
         });
         return !!saved;
     }

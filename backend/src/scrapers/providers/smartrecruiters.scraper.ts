@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { ScrapedJob } from '../interfaces/scraped-job.interface';
+import { providerRequestOptions, validPostedDate } from './provider-utils';
 
 @Injectable()
 export class SmartRecruitersScraper {
@@ -9,31 +10,42 @@ export class SmartRecruitersScraper {
     async scrape(companyId: string): Promise<ScrapedJob[]> {
         try {
             // SmartRecruiters has a public API
-            const response = await axios.get(
-                `${this.baseUrl}/${companyId}/postings`,
-                {
-                    params: {
-                        limit: 100,
-                    },
-                    headers: {
-                        'User-Agent': 'NextGoal Job Aggregator',
-                    },
-                },
-            );
-
-            const jobs = response.data?.content || [];
-
-            return jobs.map((job: any) => this.parseJob(job, companyId));
+            const jobs: ScrapedJob[] = [];
+            const seen = new Set<string>();
+            let offset = 0;
+            // Bound the scan so a broken upstream cannot create an infinite loop.
+            for (let page = 0; page < 100; page++) {
+                const response = await axios.get(`${this.baseUrl}/${encodeURIComponent(companyId)}/postings`, {
+                    ...providerRequestOptions,
+                    params: { limit: 100, offset },
+                });
+                const postings = response.data?.content;
+                if (!Array.isArray(postings)) throw new Error('Unexpected SmartRecruiters response');
+                if (!postings.length) return jobs;
+                let added = 0;
+                for (const posting of postings) {
+                    if (!seen.has(String(posting.id))) {
+                        jobs.push(this.parseJob(posting, companyId));
+                        seen.add(String(posting.id));
+                        added++;
+                    }
+                }
+                if (!added) throw new Error('SmartRecruiters pagination made no progress');
+                offset += postings.length;
+                const total = Number(response.data.totalFound);
+                if ((Number.isFinite(total) && offset >= total) || (!Number.isFinite(total) && postings.length < 100)) return jobs;
+            }
+            throw new Error('SmartRecruiters pagination exceeded 100 pages');
         } catch (error) {
             console.error(`SmartRecruiters scrape failed for ${companyId}:`, error.message);
-            return [];
+            throw error;
         }
     }
 
     private parseJob(job: any, companyId: string): ScrapedJob {
         const location = job.location?.city
             ? `${job.location.city}, ${job.location.country}`
-            : 'Remote';
+            : undefined;
 
         return {
             title: job.name,
@@ -43,10 +55,10 @@ export class SmartRecruitersScraper {
             experienceLevel: this.inferExperienceLevel(job.name, job.experienceLevel),
             degreeRequired: 'any',
             description: job.jobAd?.sections?.jobDescription?.text || '',
-            applyUrl: job.applyUrl || `https://jobs.smartrecruiters.com/${companyId}/${job.id}`,
+            applyUrl: job.applyUrl || job.jobAdUrl || (job.id ? `https://jobs.smartrecruiters.com/${encodeURIComponent(companyId)}/${encodeURIComponent(job.id)}` : ''),
             source: 'smartrecruiters',
             sourceId: job.id,
-            postedDate: job.releasedDate ? new Date(job.releasedDate) : new Date(),
+            postedDate: validPostedDate(job.releasedDate),
         };
     }
 
@@ -54,6 +66,7 @@ export class SmartRecruitersScraper {
         const label = type?.label?.toLowerCase() || '';
         if (label.includes('intern')) return 'internship';
         if (label.includes('part')) return 'part-time';
+        if (label.includes('contract')) return 'contract';
         return 'full-time';
     }
 

@@ -1,275 +1,179 @@
-# NextGoal - Job Aggregation Platform
+# NextGoal
 
-A production-grade job discovery platform that aggregates real-time job listings from official company career pages.
+NextGoal brings jobs from configured company career boards into one searchable view, with daily refreshes and source-provided application destinations.
 
-![NextGoal](https://img.shields.io/badge/NextGoal-Job%20Aggregation-blue)
-![NestJS](https://img.shields.io/badge/Backend-NestJS-red)
-![Next.js](https://img.shields.io/badge/Frontend-Next.js%2014-black)
+## What is included
 
-## Features
+- Search job titles, companies, and descriptions; filter by experience, degree, job type, location, company, ATS source, posting age, and remote location text.
+- Responsive dark discovery interface with locally hosted Sora/Manrope fonts, URL-restorable search state, source labels, application destination hosts, loading/error/empty states, and saved jobs.
+- Email/password accounts, optional Google sign-in through Supabase, and stored job preferences.
+- Daily ingestion, application-link checks, duplicate handling, and confirmed-closed listing retirement.
+- English-only public job content, private source originals, and a configurable translation/retry pipeline.
 
-- 🔐 **Authentication** - Email/password + Google OAuth
-- 🔍 **Job Search** - Full-text search with real-time filtering
-- 📋 **Smart Filters** - Experience level, degree, job type, location, company
-- 💾 **Save Jobs** - Bookmark jobs for later review
-- ⚙️ **Preferences** - Set your job preferences
-- 🤖 **Auto-Scrape** - Aggregates jobs from multiple ATS platforms
-- 📱 **Responsive** - Works on desktop and mobile
+This is a configured-source aggregator. It does not search every job platform. A checked source or link does not guarantee an employer's identity or that a vacancy remains open when someone applies.
 
-## Tech Stack
+## Source coverage
 
-### Backend
-- **Framework**: NestJS (Node.js)
-- **Database**: PostgreSQL with Prisma ORM
-- **Cache/Queue**: Redis with BullMQ
-- **Authentication**: JWT + Passport (Google OAuth)
-- **Scraping**: Axios + Cheerio (Playwright for dynamic sites)
+| ATS | Configured board identifiers | Adapter |
+| --- | --- | --- |
+| Greenhouse | stripe, airbnb, coinbase, databricks, discord, vercel | Implemented |
+| Lever | palantir | Implemented |
+| Ashby | ramp, notion | Implemented |
+| SmartRecruiters | Ubisoft2 | Implemented |
+| Workday | None | Placeholder; not integrated |
 
-### Frontend
-- **Framework**: Next.js 14 (App Router)
-- **Styling**: Tailwind CSS + ShadCN UI
-- **State**: React Query + Context API
-- **HTTP Client**: Axios
+There are **four implemented ATS adapters and ten configured boards**. The list is in `backend/src/scrapers/configured-boards.ts`; a board may move to a different ATS or become unavailable. Individual public-source checks during this revision identified outdated board identifiers and informed this list. `backend/scripts/probe-sources.ts` rechecks the configured adapters without writing to the database; it saves a small local inspection snapshot. This is separate from a full ingestion run against PostgreSQL/Redis. LinkedIn, Indeed, and Naukri are not integrated.
 
-## Project Structure
+The read-only source check on **10 September 2026 at 09:55 UTC** succeeded for all ten boards, which reported **2,879 feed postings before application-level deduplication**. Its local snapshot contains twelve actual samples, up to three per ATS. Application pages were not independently verified by this probe, and no applications were submitted. These counts describe that inspection, not a deployed catalog or a live dashboard statistic.
 
-```
-NextGoal/
-├── backend/                    # NestJS API
-│   ├── src/
-│   │   ├── auth/              # JWT + Google OAuth
-│   │   ├── users/             # User management
-│   │   ├── jobs/              # Job CRUD & search
-│   │   ├── scrapers/          # ATS scrapers
-│   │   └── prisma/            # Database service
-│   └── prisma/
-│       ├── schema.prisma      # Database schema
-│       └── seed.ts            # Seed data
-│
-├── frontend/                   # Next.js 14 App
-│   ├── app/                   # Pages (App Router)
-│   ├── components/            # React components
-│   └── lib/                   # Utilities & API client
-│
-└── README.md
-```
+The adapters use company-specific public posting endpoints, including the [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html) and [Ashby Job Postings API](https://developers.ashbyhq.com/docs/public-job-posting-api). Application URLs come from the source response; the application remains on the employer or ATS website.
 
-## Quick Start
+## Daily refresh and application links
 
-### Prerequisites
+The backend schedules a full source refresh at **02:00 Asia/Kolkata every day** and link verification at **03:00 Asia/Kolkata**. Startup and hourly recovery checks at minute 30 run a catch-up when no refresh has completed or its completion is at least 24 hours old. Redis stores the completion timestamp and coordinates a renewable lock to keep backend replicas from running the full refresh concurrently. Source failures are reported per board; check those outcomes rather than assuming a completed run means every source succeeded. A completed attempt, including a partial failure, advances the recovery timestamp; individual failing boards currently wait for the next full run.
 
-- Node.js 18+
-- PostgreSQL 15+
-- Redis 7+ (optional, for job queues)
+The verifier validates the URL and destination, then checks the response. Timeouts, rate limits, and temporary server failures are inconclusive; repeated definitive missing/closed responses can deactivate a job. A listing's check timestamp describes a check attempt. It is not an employer verification badge or a guaranteed successful application. Removing a listing solely because a provider is temporarily unreachable would discard valid opportunities, so source health and freshness need monitoring.
 
-### 1. Clone & Install
+The schedule is hosted by the running NestJS process, which registers scheduled work at application startup. [NestJS task scheduling](https://docs.nestjs.com/techniques/task-scheduling).
+
+## English publication and translation
+
+Public job titles, descriptions and locations must pass the English publication checks. Company proper names and application URLs remain unchanged; the external application page may use another language. Original source text is retained in private database fields and excluded from public APIs. Public lists, details, saved jobs, counts and filter values include only active, English-ready records. Translated records can display an “English translation” label and translation timestamp.
+
+`TRANSLATION_PROVIDER=none` is the default. It publishes confidently English content without a translation service. Foreign or uncertain content stays privately queued, with its originals preserved; it is neither deleted nor shown raw as a fallback. Configure one of these providers to process the queued content:
+
+| Backend setting | Configuration |
+| --- | --- |
+| `TRANSLATION_PROVIDER=libretranslate` | Set `LIBRETRANSLATE_URL` to the service base URL, without `/translate`; set `LIBRETRANSLATE_API_KEY` if the service requires it. |
+| `TRANSLATION_PROVIDER=google` | Set `GOOGLE_TRANSLATE_API_KEY` for the configured Google Cloud Translation Basic v2 service/account. |
+
+Enabling a provider permits translation calls during ingestion and backfill. Successful English output is cached by source-content fingerprint. Incomplete or unconfirmed output remains private for retry. Startup and **04:00 Asia/Kolkata daily** retry up to 1,000 due active queued records; failed attempts use persisted retry delays from one hour to 24 hours. A missing provider leaves records queued with a 24-hour retry delay. The daily worker processes records when they are due; these delays do not imply an hourly translation worker.
+
+Existing databases require migration **`20260910000000_english_job_publication`** and a backfill. The migration preserves the old source text and marks existing jobs pending, so they stay out of public results until processed. After setting the provider and applying migrations, run from `backend`:
 
 ```bash
-cd c:\Users\HP\NextGoal
-
-# Install backend dependencies
-cd backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
+npm run jobs:translate -- --all --force
 ```
 
-### 2. Configure Environment
+`--all` processes all active queued records; `--force` bypasses their retry delay. For a bounded run, use `--limit=1000` instead of `--all`. Inspect the returned ready/pending/failed counts. With provider `none`, the same backfill makes confidently English records ready and retains the remainder privately. The backfill needs PostgreSQL but has no Redis dependency or HTTP listener.
 
-**Backend** (`backend/.env`):
-```env
-DATABASE_URL=postgresql://postgres:password@localhost:5432/nextgoal
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=your-super-secret-jwt-key-change-in-production
-JWT_EXPIRES_IN=7d
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_CALLBACK_URL=http://localhost:3001/auth/google/callback
-PORT=3001
-FRONTEND_URL=http://localhost:3000
+No live translation provider or database was configured during this revision. Full multilingual-source coverage depends on configuring a provider and completing this migration/backfill; the pipeline alone does not establish translation quality or complete coverage.
+
+## Local setup
+
+The project uses Next.js 14.2.35/React 18 for the frontend, NestJS for the API, PostgreSQL with Prisma 5, and Redis with Bull. Redis is required by the backend queue configuration. The Compose file starts the local database and Redis; it does not deploy the application.
+
+Use Node.js 22 or newer with the resolved dependencies, PostgreSQL 15+, and Redis 7+. Confirm `node --version` in the same terminal used for npm commands; this revision's local checks used the bundled Node.js 24 runtime. Start from the repository root:
+
+```bash
+git clone https://github.com/ItsDee19/NextGoal-Web.git
+cd NextGoal-Web
+docker compose up -d
 ```
 
-**Frontend** (`frontend/.env.local`):
-```env
-NEXT_PUBLIC_API_URL=http://localhost:3001
+Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env.local`. For PowerShell:
+
+```powershell
+Copy-Item backend/.env.example backend/.env
+Copy-Item frontend/.env.example frontend/.env.local
 ```
 
-### 3. Setup Database
+Configure the database URLs and a strong random JWT secret. `DIRECT_URL` is the direct PostgreSQL connection used by the Prisma schema; it can equal `DATABASE_URL` for local PostgreSQL. Keep secrets out of source control. The database password and open ports in Compose are local development defaults.
+
+Install and initialize the backend:
 
 ```bash
 cd backend
-
-# Generate Prisma client
+npm install
 npx prisma generate
-
-# Run migrations
-npx prisma migrate dev --name init
-
-# Seed sample data
-npm run prisma:seed
-```
-
-### 4. Start Development Servers
-
-**Terminal 1 - Backend**:
-```bash
-cd backend
+npx prisma migrate deploy
+npm run jobs:translate -- --all --force
 npm run start:dev
 ```
 
-**Terminal 2 - Frontend**:
+The committed migrations initialize or update the schema. The English backfill is a no-op on an empty database; on an existing database it processes retained jobs under the configured publication policy. Use `npx prisma migrate dev --name descriptive_name` only when authoring a new migration against a development database.
+
+In a second terminal:
+
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000). The API defaults to [http://localhost:3001](http://localhost:3001), with [Swagger documentation](http://localhost:3001/api/docs). An empty database shows an empty search state until real jobs are ingested.
 
-## Demo Credentials
+### Optional Google sign-in
 
-```
-Email: demo@example.com
-Password: password123
-```
+Create/configure a Supabase project with Google enabled. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the backend, and the matching `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the frontend. Use a public anonymous/publishable key in frontend configuration, never a service-role key. Register the frontend callback `/auth/callback` in the allowed redirect URLs. Restart the applications after changing environment files.
 
-## API Documentation
+Without these settings, email/password authentication remains available. The OAuth token is exchanged through `POST /auth/supabase`; the project does not implement `/auth/google` or use NextAuth.
 
-Swagger documentation is available at [http://localhost:3001/api/docs](http://localhost:3001/api/docs) when the backend is running.
+### Optional development demo account
 
-### Key Endpoints
+The seed is disabled by default and refuses to run with `NODE_ENV=production`. To create the development-only `demo@example.com` / `password123` account in PowerShell:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/auth/register` | POST | Register new user |
-| `/auth/login` | POST | Login with email/password |
-| `/auth/google` | GET | Initiate Google OAuth |
-| `/jobs` | GET | List jobs with filters |
-| `/jobs/:id` | GET | Get job details |
-| `/jobs/stats` | GET | Get job statistics |
-| `/users/me` | GET | Get current user profile |
-| `/users/me/saved-jobs` | GET | Get saved jobs |
-| `/scrapers/run` | POST | Trigger job scraping |
-
-## Scraping Pipeline
-
-The platform scrapes jobs from these ATS platforms:
-
-| Platform | Method | API Type |
-|----------|--------|----------|
-| Greenhouse | REST API | Public |
-| Lever | JSON Endpoint | Public |
-| Ashby | GraphQL | Public |
-| SmartRecruiters | REST API | Public |
-| Workday | Browser Automation | Dynamic |
-
-### Running Scrapers
-
-```bash
-# Manual scrape (via API)
-curl -X POST http://localhost:3001/scrapers/run
-
-# Scrape specific company
-curl -X POST "http://localhost:3001/scrapers/company?source=greenhouse&companyId=stripe"
-```
-
-## Database Schema
-
-```
-Users
-├── id (UUID)
-├── email (unique)
-├── password_hash
-├── name
-├── google_id
-├── preferences (JSON)
-└── created_at
-
-Jobs
-├── id (UUID)
-├── title
-├── company
-├── location
-├── job_type (internship, full-time)
-├── experience_level (fresher, 1-3, 3-5, 5+)
-├── degree_required (btech, ballb, llb, any)
-├── description
-├── apply_url
-├── source
-├── source_id
-├── posted_date
-├── last_verified
-├── is_active
-└── content_hash (unique, for deduplication)
-
-SavedJobs (junction table)
-├── user_id
-├── job_id
-└── saved_at
-```
-
-## Configuration Options
-
-### Job Filters
-
-| Filter | Values |
-|--------|--------|
-| Experience Level | fresher, 1-3, 3-5, 5+ |
-| Degree | btech, ballb, llb, any |
-| Job Type | internship, full-time |
-
-### Job Expiration
-
-Jobs are automatically marked as inactive if not verified within 7 days. This is handled by the `expireStaleJobs()` method.
-
-## Building for Production
-
-```bash
-# Backend
+```powershell
 cd backend
-npm run build
-npm run start:prod
+$env:ALLOW_DEMO_SEED = 'true'
+npm run prisma:seed
+Remove-Item Env:ALLOW_DEMO_SEED
+```
 
-# Frontend
+It creates **no job listings**. It also retires the eight known fabricated fixture jobs from the old seed. Do not use the demo account on a public deployment; existing production databases seeded by the old version need those fixture jobs retired before launch.
+
+## API overview
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/jobs` | GET | Public search with filters and pagination |
+| `/jobs/:id` | GET | Job detail data |
+| `/jobs/stats` | GET | Active English-ready counts, source breakdown, recent additions and latest stored check time |
+| `/jobs/filters` | GET | Available filter values |
+| `/auth/register` | POST | Email/password registration |
+| `/auth/login` | POST | Email/password sign-in |
+| `/auth/supabase` | POST | Exchange a verified Supabase access token |
+| `/users/me` | GET | Current user's profile; bearer token required |
+| `/users/me/preferences` | PUT | Update stored preferences; bearer token required |
+| `/users/me/saved-jobs` | GET | Current user's saved jobs |
+| `/users/me/saved-jobs/:jobId` | POST / DELETE | Save or unsave a job |
+| `/scrapers/companies` | GET | Configured company boards |
+| `/scrapers/run` | POST | Full refresh; bearer token required |
+| `/scrapers/company?source=greenhouse&companyId=stripe` | POST | Refresh one company board; bearer token required |
+| `/scrapers/verify` | POST | Link-verification run; bearer token required |
+| `/jobs/verify-all` | POST | Link-verification run; bearer token required |
+
+Array filters accept repeated query parameters, for example `source=greenhouse&source=lever`. `postedWithin` accepts `24h`, `7d`, or `30d`; `remote=true` matches remote location labels. Jobs without a supplied posting date do not match a posting-age filter. Remote location text and inferred experience/degree labels are limited metadata, not complete professional-category classification.
+
+Manual maintenance routes currently accept any authenticated account. Restrict them to operators or a scheduler credential before exposing the API publicly; the daily schedule itself does not require a user's browser or session. For local testing, send the `accessToken` returned by login as `Authorization: Bearer <accessToken>` when invoking `/scrapers/run`. Inspect the response's per-board results before claiming full coverage.
+
+## Production and verification
+
+Build each application from its own directory:
+
+```bash
+npm run build
+```
+
+Start the backend with `npm run start:prod` and the frontend with `npm run start`. Set the deployed frontend's `NEXT_PUBLIC_API_URL` to the deployed backend origin and the backend's `FRONTEND_URL` to the deployed frontend origin. Apply committed database migrations in the deployment pipeline with `npx prisma migrate deploy`, then run the English backfill when upgrading an existing catalog. [Prisma deployment reference](https://docs.prisma.io/docs/cli/migrate/deploy).
+
+The backend must stay running for its in-process scheduler and queue worker. Hosting only the frontend does not refresh the job catalog. Provision durable PostgreSQL and Redis, use production secrets, and verify refresh completion and recovery in the deployed environment.
+
+Focused backend checks:
+
+```bash
+cd backend
+npm test -- --runInBand
+npm run build
+```
+
+Frontend checks:
+
+```bash
 cd frontend
+npm test
+npm run typecheck
 npm run build
-npm run start
 ```
 
-## Docker Support (Optional)
-
-Create a `docker-compose.yml` in the root:
-
-```yaml
-version: '3.8'
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: nextgoal
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-
-volumes:
-  postgres_data:
-```
-
-Run with: `docker-compose up -d`
-
-## License
-
-MIT
-
-## Disclaimer
-
-NextGoal is a job aggregator, not an employer. We collect publicly available job data from company career pages. Always verify opportunities directly with hiring companies.
+See [VERIFICATION.md](VERIFICATION.md) for recorded test results, browser checks, public-source probes, and outstanding integration checks. Live PostgreSQL/Redis integration, translation configuration/backfill, OAuth configuration, and two consecutive daily runs require a configured environment. A successful build or unit test is not proof that a deployed scheduler is running. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for deployment readiness, a prioritized feature roadmap, effort estimates, and measurable acceptance criteria. [DESIGN.md](DESIGN.md) and [UX-CONTRACT.md](UX-CONTRACT.md) record the shared design and interaction rules.
